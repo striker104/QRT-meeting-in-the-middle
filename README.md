@@ -22,6 +22,7 @@ Animated Mapbox GL prototype that visualises how attendees from global offices c
 
 - Animated globe with curved travel corridors flowing into the preset hub (`Bangkok Hub`).
 - Red route lines draw in over a few seconds, then stay visible as the proposed paths.
+- Line thickness scales with attendee volume so busier corridors stand out.
 - Sidebar summarising availability window, event duration, and attendee counts per office.
 - On-map legend clarifying the meaning of the visual cues.
 

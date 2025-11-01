@@ -73,7 +73,8 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
         type: 'Feature' as const,
         properties: {
           city: plan.city,
-          attendees: plan.attendees
+          attendees: plan.attendees,
+          lineWidth: calculateLineWidth(plan.attendees)
         },
         geometry: {
           type: 'LineString' as const,
@@ -109,11 +110,11 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
             'line-width': [
               'interpolate',
               ['linear'],
-              ['get', 'attendees'],
+              ['zoom'],
               1,
-              2,
-              5,
-              6
+              ['*', ['get', 'lineWidth'], 0.5],
+              4,
+              ['get', 'lineWidth']
             ],
             'line-color': '#ed254e',
             'line-opacity': 0.85
@@ -139,7 +140,8 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
           type: 'Feature' as const,
           properties: {
             city: plan.city,
-            attendees: plan.attendees
+            attendees: plan.attendees,
+            lineWidth: calculateLineWidth(plan.attendees)
           },
           geometry: {
             type: 'LineString' as const,
@@ -243,4 +245,11 @@ function getPartialRoute(path: [number, number][], progress: number): [number, n
 
   const lastIndex = Math.max(1, Math.floor(progress * (path.length - 1)));
   return path.slice(0, lastIndex + 1);
+}
+
+function calculateLineWidth(attendees: number) {
+  const minWidth = 2;
+  const perAttendee = 2;
+  const maxWidth = 20;
+  return Math.min(minWidth + attendees * perAttendee, maxWidth);
 }
