@@ -1,0 +1,128 @@
+{
+  "offices": [
+    {
+      "id": "london-uk-hq",
+      "label": "London, England (Headquarters)",
+      "city": "London",
+      "country": "United Kingdom",
+      "address_lines": [
+        "9 Bressenden Place",
+        "London SW1E 5BY, United Kingdom"
+      ],
+      "tags": ["headquarters"]
+    },
+    {
+      "id": "paris-fr",
+      "label": "Paris, France",
+      "city": "Paris",
+      "country": "France",
+      "address_lines": [
+        "32, Rue de Monceau",
+        "Paris, Île-de-France 75008, France"
+      ]
+    },
+    {
+      "id": "hong-kong",
+      "label": "Hong Kong",
+      "city": "Hong Kong",
+      "country_or_region": "Hong Kong",
+      "address_lines": [
+        "28 Queen’s Road Central",
+        "25/F Central Tower",
+        "Hong Kong"
+      ]
+    },
+    {
+      "id": "mumbai-in",
+      "label": "Mumbai, India",
+      "city": "Mumbai",
+      "country": "India",
+      "address_lines": [
+        "8A, 8th floor Godrej One",
+        "Pirojshanagar, Eastern Express Highway",
+        "Vikhroli East, Maharashtra 400079, India"
+      ]
+    },
+    {
+      "id": "singapore-sg",
+      "label": "Singapore",
+      "city": "Singapore",
+      "country": "Singapore",
+      "address_lines": [
+        "6 Battery Road",
+        "#22-01, Singapore 049315"
+      ]
+    },
+    {
+      "id": "shanghai-cn",
+      "label": "Shanghai, China",
+      "city": "Shanghai",
+      "country": "China",
+      "address_lines": [
+        "166 Lujiazui Ring Road",
+        "Room 2168, 21F, Mirae Asset Tower",
+        "Shanghai, China"
+      ]
+    },
+    {
+      "id": "dubai-ae",
+      "label": "Dubai, UAE",
+      "city": "Dubai",
+      "country": "United Arab Emirates",
+      "address_lines": [
+        "Index Tower",
+        "Unit 802, Level 8",
+        "Dubai, DIFC, UAE"
+      ]
+    },
+    {
+      "id": "zurich-ch",
+      "label": "Zürich, Switzerland",
+      "city": "Zürich",
+      "country": "Switzerland",
+      "address_lines": [
+        "Brandschenkestrasse 5",
+        "Zürich 8001, Switzerland"
+      ]
+    },
+    {
+      "id": "geneva-ch",
+      "label": "Geneva, Switzerland",
+      "city": "Geneva",
+      "country": "Switzerland",
+      "address_lines": [
+        "Cours de Rive 10",
+        "Geneva 1204, Switzerland"
+      ]
+    },
+    {
+      "id": "aarhus-dk",
+      "label": "Aarhus, Denmark",
+      "city": "Aarhus",
+      "country": "Denmark",
+      "address_lines": [
+        "Soendergrade 45",
+        "Aarhus 8000, Denmark"
+      ]
+    },
+    {
+      "id": "sydney-au",
+      "label": "Sydney, Australia",
+      "city": "Sydney",
+      "country": "Australia",
+      "address_lines": [
+        "Aurora Place, 88 Philip Street",
+        "Level 24, Sydney, NSW 2000, Australia"
+      ]
+    },
+    {
+      "id": "houston-us",
+      "label": "Houston, Texas, USA",
+      "city": "Houston",
+      "country": "United States",
+      "address_lines": [],
+      "notes": "Office in Houston focusing on commodities and U.S. market expansion",
+      "opened_year": 2025
+    }
+  ]
+}
