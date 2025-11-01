@@ -90,15 +90,11 @@ export default function App() {
 
         <div className="map-overlay">
           <strong>How to read this view</strong>
-          <span>Animated dots show live progress for each traveller.</span>
+          <span>Red arcs draw in to highlight the proposed corridors from each origin office.</span>
           <div className="legend">
             <div className="legend__item">
               <span className="legend__swatch legend__swatch--route" />
-              Travel corridor
-            </div>
-            <div className="legend__item">
-              <span className="legend__swatch legend__swatch--traveller" />
-              Traveller position
+              Proposed travel corridor
             </div>
           </div>
         </div>

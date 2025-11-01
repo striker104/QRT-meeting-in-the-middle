@@ -6,19 +6,12 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN ?? '';
 
-interface TravelMarker {
-  marker: mapboxgl.Marker;
-  path: [number, number][];
-  duration: number;
-  phaseOffset: number;
-}
-
 interface TravelMapProps {
   scenario: AttendeeScenario;
   meetingLocation: CityTravelPlan;
 }
 
-const BASE_ANIMATION_DURATION = 14000;
+const ROUTE_ANIMATION_DURATION = 3200;
 
 export default function TravelMap({ scenario, meetingLocation }: TravelMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -39,7 +32,7 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12', // Changed from dark-v11 to streets-v12
+      style: 'mapbox://styles/mapbox/streets-v12',
       center: meetingLocation.coordinates,
       zoom: 2.2,
       projection: 'globe'
@@ -57,7 +50,7 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
       });
     });
 
-    let travellers: TravelMarker[] = [];
+    let routesSource: mapboxgl.GeoJSONSource | null = null;
     let animationStart: number | null = null;
 
     map.on('load', () => {
@@ -72,27 +65,36 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
         })
         .filter((plan): plan is CityTravelPlan => Boolean(plan));
 
-      const routesGeoJson = {
+      const fullRoutes = travelPlans.map((plan) =>
+        generateCurve(plan.coordinates, meetingLocation.coordinates)
+      );
+
+      const initialFeatures = travelPlans.map((plan, index) => ({
+        type: 'Feature' as const,
+        properties: {
+          city: plan.city,
+          attendees: plan.attendees
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: getPartialRoute(fullRoutes[index], 0)
+        }
+      }));
+
+      const collection = {
         type: 'FeatureCollection' as const,
-        features: travelPlans.map((plan) => ({
-          type: 'Feature' as const,
-          properties: {
-            city: plan.city,
-            attendees: plan.attendees
-          },
-          geometry: {
-            type: 'LineString' as const,
-            coordinates: generateCurve(plan.coordinates, meetingLocation.coordinates)
-          }
-        }))
+        features: initialFeatures
       };
 
       if (!map.getSource('travel-routes')) {
         map.addSource('travel-routes', {
           type: 'geojson',
-          data: routesGeoJson
+          data: collection
         });
       }
+
+      routesSource = map.getSource('travel-routes') as mapboxgl.GeoJSONSource;
+      routesSource.setData(collection);
 
       if (!map.getLayer('travel-routes')) {
         map.addLayer({
@@ -113,13 +115,10 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
               5,
               6
             ],
-            'line-color': '#5ae0ff',
-            'line-opacity': 0.7
+            'line-color': '#ed254e',
+            'line-opacity': 0.85
           }
         });
-      } else {
-        const source = map.getSource('travel-routes') as mapboxgl.GeoJSONSource;
-        source.setData(routesGeoJson);
       }
 
       createMeetingMarker(map, meetingLocation);
@@ -128,31 +127,37 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
         createCityMarker(map, plan);
       });
 
-      travellers = travelPlans.flatMap((plan) =>
-        createTravellers(map, plan, meetingLocation.coordinates)
-      );
-
-      const animate = (timestamp: number) => {
+      const animateRoutes = (timestamp: number) => {
         if (animationStart === null) {
           animationStart = timestamp;
         }
 
         const elapsed = timestamp - animationStart;
+        const progress = Math.min(elapsed / ROUTE_ANIMATION_DURATION, 1);
 
-        travellers.forEach((traveller) => {
-          const progress =
-            ((elapsed + traveller.phaseOffset) % traveller.duration) / traveller.duration;
-          const pathIndex = Math.min(
-            Math.floor(progress * (traveller.path.length - 1)),
-            traveller.path.length - 1
-          );
-          traveller.marker.setLngLat(traveller.path[pathIndex]);
+        const animatedFeatures = travelPlans.map((plan, index) => ({
+          type: 'Feature' as const,
+          properties: {
+            city: plan.city,
+            attendees: plan.attendees
+          },
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: getPartialRoute(fullRoutes[index], progress)
+          }
+        }));
+
+        routesSource?.setData({
+          type: 'FeatureCollection',
+          features: animatedFeatures
         });
 
-        animationRef.current = requestAnimationFrame(animate);
+        if (progress < 1) {
+          animationRef.current = requestAnimationFrame(animateRoutes);
+        }
       };
 
-      animationRef.current = requestAnimationFrame(animate);
+      animationRef.current = requestAnimationFrame(animateRoutes);
     });
 
     return () => {
@@ -161,7 +166,6 @@ export default function TravelMap({ scenario, meetingLocation }: TravelMapProps)
       }
 
       if (mapRef.current) {
-        travellers.forEach((traveller) => traveller.marker.remove());
         mapRef.current.remove();
         mapRef.current = null;
       }
@@ -208,35 +212,6 @@ function createCityMarker(map: mapboxgl.Map, plan: CityTravelPlan) {
     .addTo(map);
 }
 
-function createTravellers(
-  map: mapboxgl.Map,
-  plan: CityTravelPlan,
-  meetingCoords: [number, number]
-): TravelMarker[] {
-  const path = generateCurve(plan.coordinates, meetingCoords);
-  const duration = BASE_ANIMATION_DURATION + Math.random() * 3500;
-
-  return Array.from({ length: plan.attendees }).map((_, index) => {
-    const travellerElement = document.createElement('div');
-    travellerElement.className = 'traveller';
-    travellerElement.style.setProperty('--trail-delay', `${index * 120}ms`);
-
-    const marker = new mapboxgl.Marker({
-      element: travellerElement,
-      anchor: 'center'
-    })
-      .setLngLat(path[0])
-      .addTo(map);
-
-    return {
-      marker,
-      path,
-      duration,
-      phaseOffset: (index / plan.attendees) * duration
-    };
-  });
-}
-
 function generateCurve(
   start: [number, number],
   end: [number, number],
@@ -255,4 +230,17 @@ function generateCurve(
   }
 
   return coordinates;
+}
+
+function getPartialRoute(path: [number, number][], progress: number): [number, number][] {
+  if (path.length === 0) {
+    return [];
+  }
+
+  if (progress <= 0) {
+    return [path[0], path[0]];
+  }
+
+  const lastIndex = Math.max(1, Math.floor(progress * (path.length - 1)));
+  return path.slice(0, lastIndex + 1);
 }
