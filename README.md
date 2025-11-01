@@ -2,6 +2,8 @@
 
 Animated Mapbox GL prototype that visualises how attendees from global offices converge on a proposed meet-up hub. The dataset is intentionally static right now—the goal is to provide a visual wrapper that your teammates can plug real scheduling logic into later.
 
+here is the link to the repo with some of the data: https://github.com/orrygoob/durhack2025-flight-data.git
+
 ## Getting Started
 
 1. Install dependencies:
