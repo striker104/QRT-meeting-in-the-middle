@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import TravelMap from './components/TravelMap';
 import { AttendeeScenario, CityTravelPlan } from './types';
 
@@ -18,6 +19,22 @@ type BackendEventSummary = {
   min_travel_hours: number;
   attendee_travel_hours: Record<string, number>;
 };
+
+type ActiveTab = 'info' | 'world';
+
+type FeatureCard = {
+  id: string;
+  label: string;
+  title: string;
+  description: string;
+  meta?: string;
+  cta?: string;
+};
+
+const tabOptions: { id: ActiveTab; label: string }[] = [
+  { id: 'info', label: 'Info board' },
+  { id: 'world', label: 'World view' }
+];
 
 const sampleBackendSummary: BackendEventSummary = {
   event_location: 'New York',
@@ -177,14 +194,14 @@ export default function App() {
 
   const longestRoute = travelHoursByCity[0];
 
-  const featureCards = [
+  const featureCards: FeatureCard[] = [
     {
       id: 'hub',
       label: 'Meeting hub',
       title: meetingLocation.city,
       meta: formatDateRange(eventSummary.event_dates),
       description: `${travelHoursByCity.length} global offices align to this schedule.`,
-      cta: 'View itinerary'
+      cta: 'Simulate the journey'
     },
     {
       id: 'longest',
@@ -202,7 +219,15 @@ export default function App() {
     }
   ];
 
+  const heroCard = featureCards[0];
+  const secondaryCards = featureCards.slice(1);
   const filterLabels = ['City', 'Metric', 'Window', 'CO₂ profile'];
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('info');
+  const [showFullMap, setShowFullMap] = useState(false);
+
+  const handleSimulateJourney = () => setShowFullMap(true);
+  const handleCloseSimulation = () => setShowFullMap(false);
 
   return (
     <div className="app">
@@ -227,52 +252,105 @@ export default function App() {
       <div className="sub-nav">
         <span className="sub-nav__tag">meeting in the middle</span>
         <span className="sub-nav__title">Global session storyboard</span>
-        <button className="sub-nav__cta" type="button">
-          Tune in
+        <button className="sub-nav__cta" type="button" onClick={handleSimulateJourney}>
+          Simulate the journey
         </button>
       </div>
 
       <main className="page">
-        <section className="feature-deck">
-          <article className="feature-card feature-card--hero">
-            <span className="feature-card__tag">{featureCards[0].label}</span>
-            <h2 className="feature-card__title">{featureCards[0].title}</h2>
-            <p className="feature-card__meta">{featureCards[0].meta}</p>
-            <p className="feature-card__description">{featureCards[0].description}</p>
-            <button className="feature-card__cta" type="button">
-              {featureCards[0].cta}
-            </button>
-          </article>
-
-          <div className="feature-card-list">
-            {featureCards.slice(1).map((card) => (
-              <article className="feature-card feature-card--compact" key={card.id}>
-                <span className="feature-card__tag">{card.label}</span>
-                <h3 className="feature-card__title">{card.title}</h3>
-                <p className="feature-card__description">{card.description}</p>
-                <p className="feature-card__meta">{card.meta}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="filter-row">
-          {filterLabels.map((label) => (
-            <button className="filter-pill" type="button" key={label}>
-              <span>{label}</span>
-              <span className="filter-pill__icon">⌄</span>
+        <section className="tab-bar">
+          {tabOptions.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`tab-button${activeTab === tab.id ? ' tab-button--active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
             </button>
           ))}
         </section>
 
-        <section className="content-grid">
-          <div className="info-column">
-            <article className="info-card">
-              <header>
-                <span className="info-card__kicker">Travel benchmarks</span>
-                <h3 className="info-card__title">Journey analytics</h3>
-              </header>
-              <ul className="info-card__list">
+        {activeTab === 'info' && (
+          <>
+            <section className="feature-deck">
+              <article className="feature-card feature-card--hero">
+                <span className="feature-card__tag">{heroCard.label}</span>
+                <h2 className="feature-card__title">{heroCard.title}</h2>
+                {heroCard.meta ? <p className="feature-card__meta">{heroCard.meta}</p> : null}
+                <p className="feature-card__description">{heroCard.description}</p>
+                {heroCard.cta ? (
+                  <button
+                    className="feature-card__cta"
+                    type="button"
+                    onClick={handleSimulateJourney}
+                  >
+                    {heroCard.cta}
+                  </button>
+                ) : null}
+              </article>
+
+              <div className="feature-card-list">
+                {secondaryCards.map((card) => (
+                  <article className="feature-card feature-card--compact" key={card.id}>
+                    <span className="feature-card__tag">{card.label}</span>
+                    <h3 className="feature-card__title">{card.title}</h3>
+                    <p className="feature-card__description">{card.description}</p>
+                    {card.meta ? <p className="feature-card__meta">{card.meta}</p> : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="filter-row">
+              {filterLabels.map((label) => (
+                <button className="filter-pill" type="button" key={label}>
+                  <span>{label}</span>
+                  <span className="filter-pill__icon">⌄</span>
+                </button>
+              ))}
+            </section>
+
+            <section className="info-panels">
+              <article className="info-card">
+                <header>
+                  <span className="info-card__kicker">Travel benchmarks</span>
+                  <h3 className="info-card__title">Journey analytics</h3>
+                </header>
+                <ul className="info-card__list">
+                  {travelStats.map((stat) => (
+                    <li key={stat.label}>
+                      <span>{stat.label}</span>
+                      <strong>{stat.value}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+
+              <article className="info-card">
+                <header>
+                  <span className="info-card__kicker">Window</span>
+                  <h3 className="info-card__title">Availability span</h3>
+                </header>
+                <p className="info-card__copy">{formatDateRange(eventSummary.event_span)}</p>
+                <p className="info-card__copy info-card__copy--muted">
+                  Sync with local leads to confirm corridor readiness ahead of the session.
+                </p>
+              </article>
+            </section>
+          </>
+        )}
+
+        {activeTab === 'world' && (
+          <section className="world-layout">
+            <div className="world-summary">
+              <span className="world-summary__tag">Global roster</span>
+              <h3 className="world-summary__title">World view</h3>
+              <p className="world-summary__copy">
+                Scan the cities contributing to this session and spot the journeys demanding the
+                highest coordination effort.
+              </p>
+              <ul className="world-summary__metrics">
                 {travelStats.map((stat) => (
                   <li key={stat.label}>
                     <span>{stat.label}</span>
@@ -280,56 +358,60 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-            </article>
-
-            <article className="info-card">
-              <header>
-                <span className="info-card__kicker">Window</span>
-                <h3 className="info-card__title">Availability span</h3>
-              </header>
-              <p className="info-card__copy">{formatDateRange(eventSummary.event_span)}</p>
-              <p className="info-card__copy info-card__copy--muted">
-                Sync with local leads to confirm corridor readiness ahead of the session.
-              </p>
-            </article>
-          </div>
-
-          <div className="map-column">
-            <div className="map-frame">
-              <TravelMap scenario={scenario} meetingLocation={meetingLocation} />
+              <button
+                className="world-summary__cta"
+                type="button"
+                onClick={handleSimulateJourney}
+              >
+                Simulate the journey
+              </button>
             </div>
-            <footer className="map-legend">
-              <strong>How to read this view</strong>
-              <p>Arcs ease-in to illustrate routes, sized by attendee intensity.</p>
-              <div className="map-legend__row">
-                <span className="map-legend__swatch" />
-                <span>Active travel corridor</span>
-              </div>
-            </footer>
-          </div>
-        </section>
 
-        <section className="city-grid">
-          <header className="section-header">
-            <h3>Departure offices</h3>
-            <span>{travelHoursByCity.length} cities tracked</span>
-          </header>
-          <div className="city-grid__content">
-            {travelHoursByCity.map(([city, hours], index) => (
-              <article className="city-card" key={city}>
-                <span className="city-card__index">{String(index + 1).padStart(2, '0')}</span>
-                <div className="city-card__meta">
-                  <span className="city-card__city">{city}</span>
-                  <span className="city-card__time">{formatHours(hours)}</span>
-                </div>
-                <span className="city-card__tag">
-                  {hours > eventSummary.average_travel_hours ? 'Long haul' : 'Quick hop'}
-                </span>
-              </article>
-            ))}
-          </div>
-        </section>
+            <div className="world-city-grid">
+              <header className="section-header">
+                <h4>Departure offices</h4>
+                <span>{travelHoursByCity.length} cities tracked</span>
+              </header>
+              <div className="city-grid__content">
+                {travelHoursByCity.map(([city, hours], index) => (
+                  <article className="city-card" key={city}>
+                    <span className="city-card__index">{String(index + 1).padStart(2, '0')}</span>
+                    <div className="city-card__meta">
+                      <span className="city-card__city">{city}</span>
+                      <span className="city-card__time">{formatHours(hours)}</span>
+                    </div>
+                    <span className="city-card__tag">
+                      {hours > eventSummary.average_travel_hours ? 'Long haul' : 'Quick hop'}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
       </main>
+
+      {showFullMap && (
+        <div className="map-screen" role="dialog" aria-modal="true">
+          <div className="map-screen__header">
+            <button className="map-screen__button" type="button" onClick={handleCloseSimulation}>
+              ← Back to board
+            </button>
+            <span>Route animation playback</span>
+          </div>
+          <div className="map-screen__map">
+            <TravelMap
+              key="full-map"
+              scenario={scenario}
+              meetingLocation={meetingLocation}
+            />
+            <div className="map-screen__legend">
+              <strong>How to read this view</strong>
+              <p>Red arcs accelerate in to highlight the proposed travel corridors.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
