@@ -85,3 +85,19 @@ export interface FlightPrice {
   priceCurrency?: string;
   error?: string;
 }
+
+// Accommodation price data
+export interface AccommodationPrice {
+  city: string;
+  numberOfPeople: number;
+  checkIn: string;
+  checkOut: string;
+  hotelStars: number;
+  priceUSD?: number;
+  pricePerNightUSD?: number;
+  numberOfNights?: number;
+  priceCurrency?: string;
+  hotelName?: string;
+  bookingLink?: string;
+  error?: string;
+}

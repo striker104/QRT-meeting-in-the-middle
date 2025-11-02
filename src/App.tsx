@@ -1,10 +1,10 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
-import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice } from './types';
+import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice, AccommodationPrice } from './types';
 import { sampleScenario, cityCoordinates } from './data/sampleScenario';
 import { streamMeetingPlan } from './api/openRouterClient';
-import { getFlightPrices } from './api/getPrices';
+import { getFlightPrices, getAccommodationPrice } from './api/getPrices';
 import { getCityNameFromAirportCode } from './data/airportCodes';
 
 type ViewState = 'onboarding' | 'optimising' | 'analysis' | 'world';
@@ -405,6 +405,28 @@ function calculateTotalPrice(prices: FlightPrice[]): number {
   }, 0);
 }
 
+function calculateAccommodationTotal(accommodation: AccommodationPrice | undefined): number {
+  if (!accommodation) return 0;
+  
+  // If we have pricePerNightUSD, calculate: nights × people × pricePerNight
+  if (accommodation.pricePerNightUSD && accommodation.numberOfNights && accommodation.numberOfPeople) {
+    return accommodation.pricePerNightUSD * accommodation.numberOfNights * accommodation.numberOfPeople;
+  }
+  
+  // Otherwise use the provided priceUSD
+  if (accommodation.priceUSD !== undefined && Number.isFinite(accommodation.priceUSD)) {
+    return accommodation.priceUSD;
+  }
+  
+  return 0;
+}
+
+function calculateCombinedTotal(flightPrices: FlightPrice[], accommodation: AccommodationPrice | undefined): number {
+  const flightTotal = calculateTotalPrice(flightPrices);
+  const accommodationTotal = calculateAccommodationTotal(accommodation);
+  return flightTotal + accommodationTotal;
+}
+
 function deriveMeetingLocation(summary: EventSummary): CityTravelPlan {
   // Convert airport code to city name if needed
   const cityName = getCityNameFromAirportCode(summary.event_location);
@@ -439,8 +461,13 @@ export default function App() {
   const [flightPrices, setFlightPrices] = useState<Map<number, FlightPrice[]>>(new Map());
   const [isFetchingPrices, setIsFetchingPrices] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [accommodationPrices, setAccommodationPrices] = useState<Map<number, AccommodationPrice>>(new Map());
+  const [isFetchingAccommodation, setIsFetchingAccommodation] = useState(false);
+  const [accommodationError, setAccommodationError] = useState<string | null>(null);
+  const [hotelStars, setHotelStars] = useState<number>(4);
   const activeBriefRequests = useRef<Map<number, AbortController>>(new Map());
   const activePriceRequests = useRef<Map<number, AbortController>>(new Map());
+  const activeAccommodationRequests = useRef<Map<number, AbortController>>(new Map());
 
   // Get the currently selected result
   const selectedResult = optimizationResults[selectedResultIndex] ?? null;
@@ -450,6 +477,7 @@ export default function App() {
     return () => {
       activeBriefRequests.current.forEach((controller) => controller.abort());
       activePriceRequests.current.forEach((controller) => controller.abort());
+      activeAccommodationRequests.current.forEach((controller) => controller.abort());
     };
   }, []);
 
@@ -605,6 +633,95 @@ export default function App() {
     }
   }, [optimizationResults, fetchPricesForResults]);
 
+  // Fetch accommodation prices for all optimization results
+  const fetchAccommodationForResults = useCallback(async (results: OptimizationResult[], stars: number) => {
+    console.log('🏨 fetchAccommodationForResults called with', results.length, 'results, stars:', stars);
+    
+    // Cancel any existing accommodation requests
+    activeAccommodationRequests.current.forEach((controller) => controller.abort());
+    activeAccommodationRequests.current.clear();
+
+    setIsFetchingAccommodation(true);
+    setAccommodationError(null);
+
+    // Calculate total attendees from current scenario
+    const currentTotalAttendees = scenario 
+      ? Object.values(scenario.attendees).reduce((sum, count) => sum + count, 0)
+      : 0;
+
+    // Fetch accommodation for each result
+    const accommodationPromises = results.map(async (result) => {
+      console.log(`🏨 Fetching accommodation for rank ${result.rank}...`);
+      
+      const cityName = getCityNameFromAirportCode(result.event_location);
+      const checkIn = result.event_span.start;
+      const checkOut = result.event_span.end;
+      const numberOfPeople = currentTotalAttendees;
+
+      const controller = new AbortController();
+      activeAccommodationRequests.current.set(result.rank, controller);
+
+      try {
+        const accommodation = await getAccommodationPrice(
+          cityName,
+          numberOfPeople,
+          checkIn,
+          checkOut,
+          stars,
+          {
+            signal: controller.signal
+          }
+        );
+        console.log(`✅ Got accommodation price for rank ${result.rank}:`, accommodation.priceUSD);
+        return { rank: result.rank, accommodation };
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          console.error(`❌ Failed to fetch accommodation for rank ${result.rank}:`, error);
+          return { 
+            rank: result.rank, 
+            accommodation: {
+              city: cityName,
+              numberOfPeople,
+              checkIn,
+              checkOut,
+              hotelStars: stars,
+              error: error instanceof Error ? error.message : 'Failed to fetch accommodation'
+            } as AccommodationPrice
+          };
+        }
+        return { rank: result.rank, accommodation: null };
+      }
+    });
+
+    try {
+      const accommodationResults = await Promise.all(accommodationPromises);
+      const newAccommodationMap = new Map<number, AccommodationPrice>();
+      
+      accommodationResults.forEach(({ rank, accommodation }) => {
+        if (accommodation) {
+          newAccommodationMap.set(rank, accommodation);
+          console.log(`💰 Rank ${rank}: Accommodation price stored`);
+        }
+      });
+
+      console.log('✅ All accommodation prices fetched! Map size:', newAccommodationMap.size);
+      setAccommodationPrices(newAccommodationMap);
+    } catch (error) {
+      console.error('❌ Accommodation fetching error:', error);
+      setAccommodationError('Failed to fetch some accommodation prices');
+    } finally {
+      setIsFetchingAccommodation(false);
+      console.log('🏁 Accommodation fetching complete');
+    }
+  }, [scenario]);
+
+  useEffect(() => {
+    if (optimizationResults.length > 0 && hotelStars > 0) {
+      console.log('🏨 Calling fetchAccommodationForResults...');
+      void fetchAccommodationForResults(optimizationResults, hotelStars);
+    }
+  }, [optimizationResults, hotelStars, fetchAccommodationForResults]);
+
   const runOptimisation = useCallback(async (nextScenario: AttendeeScenario) => {
     setScenario(nextScenario);
     setView('optimising');
@@ -612,16 +729,21 @@ export default function App() {
     setOptimizationResults([]);
     setSelectedResultIndex(0);
     setFlightPrices(new Map());
+    setAccommodationPrices(new Map());
     setExecutiveBriefs(new Map());
     setBriefModels(new Map());
     setBriefErrors(new Map());
     setFetchingBriefRanks(new Set());
     setPriceError(null);
+    setAccommodationError(null);
     setIsFetchingPrices(false);
+    setIsFetchingAccommodation(false);
     activeBriefRequests.current.forEach((controller) => controller.abort());
     activeBriefRequests.current.clear();
     activePriceRequests.current.forEach((controller) => controller.abort());
     activePriceRequests.current.clear();
+    activeAccommodationRequests.current.forEach((controller) => controller.abort());
+    activeAccommodationRequests.current.clear();
 
     try {
       const results = await mockOptimiseScenario(nextScenario);
@@ -655,19 +777,24 @@ export default function App() {
   const handleResetToOnboarding = () => {
     activeBriefRequests.current.forEach((controller) => controller.abort());
     activePriceRequests.current.forEach((controller) => controller.abort());
+    activeAccommodationRequests.current.forEach((controller) => controller.abort());
     activePriceRequests.current.clear();
     activeBriefRequests.current.clear();
+    activeAccommodationRequests.current.clear();
     setScenarioInput(JSON.stringify(scenario ?? sampleScenario, null, 2));
     setScenario(null);
     setOptimizationResults([]);
     setSelectedResultIndex(0);
     setFlightPrices(new Map());
+    setAccommodationPrices(new Map());
     setExecutiveBriefs(new Map());
     setBriefModels(new Map());
     setBriefErrors(new Map());
     setFetchingBriefRanks(new Set());
     setPriceError(null);
+    setAccommodationError(null);
     setIsFetchingPrices(false);
+    setIsFetchingAccommodation(false);
     setView('onboarding');
   };
 
@@ -822,6 +949,34 @@ export default function App() {
               <p>{priceError}</p>
             </div>
           )}
+          {accommodationError && (
+            <div className="price-error-message">
+              <p>{accommodationError}</p>
+            </div>
+          )}
+          {isFetchingAccommodation && (
+            <div className="price-loading-indicator">
+              <div className="price-loading-indicator__spinner" aria-hidden="true" />
+              <p>Finding accommodation prices…</p>
+            </div>
+          )}
+          <div className="accommodation-controls">
+            <label>Hotel star rating:</label>
+            <div className="star-rating">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  className={`star-button ${star <= hotelStars ? 'star-button--filled' : ''}`}
+                  onClick={() => setHotelStars(star)}
+                  aria-label={`${star} star${star !== 1 ? 's' : ''}`}
+                >
+                  <span className="star-icon">★</span>
+                </button>
+              ))}
+              <span className="star-rating-label">{hotelStars} {hotelStars === 1 ? 'star' : 'stars'}</span>
+            </div>
+          </div>
           <header className="analysis-hero">
             <div className="analysis-hero__info">
               <span className="analysis-hero__tag">Optimised outcome #{selectedResult.rank}</span>
@@ -869,6 +1024,61 @@ export default function App() {
                             <span className="analysis-stat__subtext">Finding prices…</span>
                           </>
                         )}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {(() => {
+                const accommodation = accommodationPrices.get(selectedResult.rank);
+                const accommodationTotal = calculateAccommodationTotal(accommodation);
+                const hasAccommodationPrice = accommodationTotal > 0 || (accommodation?.priceUSD !== undefined || accommodation?.pricePerNightUSD !== undefined);
+                
+                if (hasAccommodationPrice || isFetchingAccommodation || selectedResult.rank > 0) {
+                  return (
+                    <div className="analysis-stat analysis-stat--price analysis-stat--highlight">
+                      <div className="analysis-stat__content">
+                        <span>Accommodation cost ({hotelStars}★)</span>
+                        {accommodationTotal > 0 && accommodation ? (
+                          <>
+                            <strong className="price-display">{formatPrice(accommodationTotal)}</strong>
+                            {accommodation.pricePerNightUSD && accommodation.numberOfNights && accommodation.numberOfPeople && (
+                              <span className="analysis-stat__subtext">
+                                {formatPrice(accommodation.pricePerNightUSD)}/night × {accommodation.numberOfNights} nights × {accommodation.numberOfPeople} {accommodation.numberOfPeople === 1 ? 'guest' : 'guests'}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <strong className="price-display" style={{ opacity: 0.5 }}>—</strong>
+                            <span className="analysis-stat__subtext">Finding prices…</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {(() => {
+                const prices = flightPrices.get(selectedResult.rank) ?? [];
+                const accommodation = accommodationPrices.get(selectedResult.rank);
+                const flightTotal = calculateTotalPrice(prices);
+                const accommodationTotal = calculateAccommodationTotal(accommodation);
+                const combinedTotal = calculateCombinedTotal(prices, accommodation);
+                const hasFlightPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+                const hasAccommodationPrice = accommodationTotal > 0 || (accommodation?.priceUSD !== undefined || accommodation?.pricePerNightUSD !== undefined);
+                
+                if ((hasFlightPrices || hasAccommodationPrice) && combinedTotal > 0) {
+                  return (
+                    <div className="analysis-stat analysis-stat--price analysis-stat--highlight analysis-stat--combined">
+                      <div className="analysis-stat__content">
+                        <span>Total trip cost</span>
+                        <strong className="price-display price-display--large">{formatPrice(combinedTotal)}</strong>
+                        <span className="analysis-stat__subtext">
+                          {hasFlightPrices && formatPrice(flightTotal)} {hasFlightPrices && hasAccommodationPrice ? '+ ' : ''}{hasAccommodationPrice && formatPrice(accommodationTotal)}
+                        </span>
                       </div>
                     </div>
                   );
@@ -1065,6 +1275,135 @@ export default function App() {
                 }
                 return null;
               })()}
+              {(() => {
+                const accommodation = accommodationPrices.get(selectedResult.rank);
+                const accommodationTotal = calculateAccommodationTotal(accommodation);
+                const hasAccommodationPrice = accommodationTotal > 0 || (accommodation?.priceUSD !== undefined || accommodation?.pricePerNightUSD !== undefined);
+                
+                if (hasAccommodationPrice || isFetchingAccommodation || selectedResult.rank > 0) {
+                  return (
+                    <div className="analysis-side-card analysis-side-card--price">
+                      <div className="price-card-header">
+                        <h3>
+                          <span className="price-card-icon">🏨</span>
+                          Accommodation costs
+                        </h3>
+                      </div>
+                      {isFetchingAccommodation && !hasAccommodationPrice ? (
+                        <div className="price-loading-mini">
+                          <div className="price-loading-mini__spinner" aria-hidden="true" />
+                          <p>Finding prices…</p>
+                        </div>
+                      ) : hasAccommodationPrice && accommodation && accommodationTotal > 0 ? (
+                        <>
+                          <div className="price-summary price-summary--enhanced">
+                            <div className="price-summary__label">Total cost</div>
+                            <div className="price-summary__value">{formatPrice(accommodationTotal)}</div>
+                            <div className="price-summary__breakdown">
+                              <span className="price-breakdown-item">
+                                {hotelStars}★ hotel
+                              </span>
+                              {accommodation.pricePerNightUSD && accommodation.numberOfNights && accommodation.numberOfPeople && (
+                                <>
+                                  <span className="price-breakdown-item">
+                                    {formatPrice(accommodation.pricePerNightUSD)}/night
+                                  </span>
+                                  <span className="price-breakdown-item">
+                                    × {accommodation.numberOfNights} nights
+                                  </span>
+                                  <span className="price-breakdown-item">
+                                    × {accommodation.numberOfPeople} {accommodation.numberOfPeople === 1 ? 'guest' : 'guests'}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="accommodation-details">
+                            {accommodation.hotelName && (
+                              <div className="accommodation-detail-item accommodation-detail-item--hotel">
+                                <span className="accommodation-detail-label">Hotel</span>
+                                <strong className="hotel-name">{accommodation.hotelName}</strong>
+                              </div>
+                            )}
+                            {accommodation.bookingLink && (
+                              <div className="accommodation-detail-item accommodation-detail-item--booking">
+                                <a 
+                                  href={accommodation.bookingLink} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="booking-link"
+                                >
+                                  Book hotel →
+                                </a>
+                              </div>
+                            )}
+                            <div className="accommodation-detail-item">
+                              <span className="accommodation-detail-label">City</span>
+                              <strong>{accommodation.city}</strong>
+                            </div>
+                            <div className="accommodation-detail-item">
+                              <span className="accommodation-detail-label">Check-in</span>
+                              <strong>{new Date(accommodation.checkIn).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                            </div>
+                            <div className="accommodation-detail-item">
+                              <span className="accommodation-detail-label">Check-out</span>
+                              <strong>{new Date(accommodation.checkOut).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                            </div>
+                          </div>
+                        </>
+                      ) : accommodation?.error ? (
+                        <div className="price-loading-mini">
+                          <p className="price-error">{accommodation.error}</p>
+                        </div>
+                      ) : (
+                        <div className="price-loading-mini">
+                          <p>Waiting for prices to load…</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {(() => {
+                const prices = flightPrices.get(selectedResult.rank) ?? [];
+                const accommodation = accommodationPrices.get(selectedResult.rank);
+                const flightTotal = calculateTotalPrice(prices);
+                const accommodationTotal = calculateAccommodationTotal(accommodation);
+                const combinedTotal = calculateCombinedTotal(prices, accommodation);
+                const hasFlightPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+                const hasAccommodationPrice = accommodationTotal > 0 || (accommodation?.priceUSD !== undefined || accommodation?.pricePerNightUSD !== undefined);
+                
+                if ((hasFlightPrices || hasAccommodationPrice) && combinedTotal > 0) {
+                  return (
+                    <div className="analysis-side-card analysis-side-card--price analysis-side-card--combined">
+                      <div className="price-card-header">
+                        <h3>
+                          <span className="price-card-icon">💰</span>
+                          Total trip cost
+                        </h3>
+                      </div>
+                      <div className="price-summary price-summary--enhanced price-summary--combined">
+                        <div className="price-summary__label">Grand total</div>
+                        <div className="price-summary__value price-summary__value--large">{formatPrice(combinedTotal)}</div>
+                        <div className="price-summary__breakdown">
+                          {hasFlightPrices && (
+                            <span className="price-breakdown-item">
+                              Flights: {formatPrice(flightTotal)}
+                            </span>
+                          )}
+                          {hasAccommodationPrice && accommodationTotal > 0 && (
+                            <span className="price-breakdown-item">
+                              Accommodation: {formatPrice(accommodationTotal)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </aside>
           </main>
 
@@ -1127,6 +1466,27 @@ export default function App() {
                       <span>Total flight cost</span>
                       {hasPrices ? (
                         <strong className="world-price-display">{formatPrice(totalPrice)}</strong>
+                      ) : (
+                        <strong className="world-price-display" style={{ opacity: 0.5 }}>—</strong>
+                      )}
+                    </div>
+                  </article>
+                );
+              }
+              return null;
+            })()}
+            {(() => {
+              const accommodation = accommodationPrices.get(selectedResult.rank);
+              const hasAccommodationPrice = accommodation?.priceUSD !== undefined;
+              
+              if (hasAccommodationPrice || isFetchingAccommodation || selectedResult.rank > 0) {
+                return (
+                  <article className="world-metric world-metric--price world-metric--highlight">
+                    <div className="world-metric__icon">🏨</div>
+                    <div className="world-metric__content">
+                      <span>Accommodation cost ({hotelStars}★)</span>
+                      {hasAccommodationPrice && accommodation ? (
+                        <strong className="world-price-display">{formatPrice(accommodation.priceUSD)}</strong>
                       ) : (
                         <strong className="world-price-display" style={{ opacity: 0.5 }}>—</strong>
                       )}

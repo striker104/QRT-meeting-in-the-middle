@@ -1224,6 +1224,17 @@ button {
   line-height: 1;
 }
 
+.price-summary__value--large {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.price-summary--combined {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: -8px 8px 0 rgba(0, 0, 0, 0.1);
+}
+
 .price-summary__breakdown {
   display: flex;
   gap: 16px;
@@ -1270,7 +1281,7 @@ button {
 
 .price-list-container::-webkit-scrollbar-thumb {
   background: rgba(16, 16, 16, 0.2);
-  border-radius: 3px;s
+  border-radius: 3px;
 }
 
 .price-list-container::-webkit-scrollbar-thumb:hover {
@@ -1429,6 +1440,32 @@ button {
   font-size: 1.4rem !important;
   font-weight: 600 !important;
   line-height: 1.2;
+  color: #0066cc;
+}
+
+.price-display--large {
+  font-size: 2rem !important;
+  font-weight: 800 !important;
+}
+
+.analysis-stat--combined {
+  background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+  color: #ffffff;
+  border: 2px solid #101010;
+}
+
+.analysis-stat--combined span {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.analysis-stat--combined .price-display {
+  color: #ffffff;
+  font-size: 2rem !important;
+  font-weight: 800 !important;
+}
+
+.analysis-stat--combined .analysis-stat__subtext {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .analysis-stat__subtext {
@@ -1442,6 +1479,34 @@ button {
   background: #ffffff;
   border: 1.5px solid #101010;
   box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.04);
+}
+
+.analysis-side-card--combined {
+  background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+  color: #ffffff;
+  border: 1.5px solid #101010;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.08);
+}
+
+.analysis-side-card--combined .price-card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.analysis-side-card--combined .price-card-header h3 {
+  color: #ffffff;
+}
+
+.analysis-side-card--combined .price-summary__label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.analysis-side-card--combined .price-summary__value {
+  color: #ffffff;
+}
+
+.analysis-side-card--combined .price-breakdown-item {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .price-card-header {
@@ -1481,6 +1546,154 @@ button {
   justify-content: center;
   gap: 24px;
   flex-wrap: wrap;
+}
+
+.accommodation-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  background: #ffffff;
+  margin-bottom: 24px;
+  box-shadow: -8px 8px 0 rgba(16, 16, 16, 0.05);
+}
+
+.accommodation-controls label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #4a4a4a;
+}
+
+.star-rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.star-button {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.star-icon {
+  font-size: 1.5rem;
+  color: rgba(16, 16, 16, 0.2);
+  transition: all 0.2s ease;
+  line-height: 1;
+  user-select: none;
+}
+
+.star-button:hover .star-icon {
+  color: rgba(16, 16, 16, 0.5);
+  transform: scale(1.1);
+}
+
+.star-button--filled .star-icon {
+  color: #ffc107;
+  filter: drop-shadow(0 2px 4px rgba(255, 193, 7, 0.3));
+}
+
+.star-button--filled:hover .star-icon {
+  color: #ff9800;
+  transform: scale(1.15);
+}
+
+.star-rating-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #101010;
+  margin-left: 4px;
+}
+
+.accommodation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dotted rgba(16, 16, 16, 0.2);
+}
+
+.accommodation-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.accommodation-detail-label {
+  font-size: 0.8rem;
+  color: #4a4a4a;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.accommodation-detail-item strong {
+  font-size: 0.9rem;
+  color: #101010;
+  font-weight: 600;
+}
+
+.accommodation-detail-item--hotel {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(16, 16, 16, 0.1);
+  margin-bottom: 8px;
+}
+
+.hotel-name {
+  font-size: 1rem;
+  color: #0066cc;
+  font-weight: 700;
+  text-align: right;
+  max-width: 60%;
+  word-wrap: break-word;
+}
+
+.accommodation-detail-item--booking {
+  padding: 12px 0;
+  border-top: 1px solid rgba(16, 16, 16, 0.1);
+  margin-top: 8px;
+  justify-content: center;
+}
+
+.booking-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #101010;
+  color: #ffffff;
+  text-decoration: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.booking-link:hover {
+  background: #0066cc;
+  transform: translateY(-2px);
+  box-shadow: -4px 4px 0 rgba(0, 102, 204, 0.3);
+}
+
+.booking-link:active {
+  transform: translateY(0);
+  box-shadow: -2px 2px 0 rgba(0, 102, 204, 0.3);
 }
 
 .world-screen {
@@ -1689,12 +1902,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.flight-group--outbound {
-}
-
-.flight-group--return {
 }
 
 .flight-group__header {
