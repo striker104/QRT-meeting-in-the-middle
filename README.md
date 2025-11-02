@@ -10,10 +10,18 @@ here is the link to the repo with some of the data: https://github.com/orrygoob/
    ```bash
    npm install
    ```
-2. Add your Mapbox access token to a `.env` file in the project root:
+2. Add your API keys to a `.env` file in the project root:
    ```bash
-   echo "VITE_MAPBOX_TOKEN=pk.your_token_here" > .env
+   VITE_MAPBOX_TOKEN=pk.your_token_here
+   VITE_UBER_SERVER_TOKEN=your_uber_server_token_here
+   VITE_OPENROUTER_API_KEY=your_openrouter_api_key_here
    ```
+   
+   **Uber API Setup:**
+   - Sign up at [Uber Developer Portal](https://developer.uber.com/)
+   - Create a new application to get your Server Token
+   - Add it to your `.env` file as `VITE_UBER_SERVER_TOKEN`
+   - The app uses the Uber Sandbox API (`https://sandbox-api.uber.com`) for testing
 3. Launch the dev server:
    ```bash
    npm run dev

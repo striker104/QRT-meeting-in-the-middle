@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
+import { UberCarIcon } from './components/UberCarIcon';
 import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice, AccommodationPrice, UberItinerary } from './types';
 import { sampleScenario, cityCoordinates } from './data/sampleScenario';
 import { streamMeetingPlan } from './api/openRouterClient';
@@ -1772,8 +1773,8 @@ export default function App() {
                                   <div className="flight-row__expanded">
                                     <div className="uber-itinerary">
                                       <h4 className="uber-itinerary__title">
-                                        <span className="uber-itinerary__icon">🚗</span>
-                                        Uber ride options
+                                        <UberCarIcon className="uber-itinerary__icon" />
+                                        Ground transportation
                                       </h4>
                                       {isFetchingUberData ? (
                                         <div className="uber-itinerary__loading">
@@ -1785,72 +1786,75 @@ export default function App() {
                                           <p>{uberData.error}</p>
                                         </div>
                                       ) : (
-                                        <div className="uber-itinerary__content">
-                                          {uberData?.fromAirport && uberData.fromAirport.length > 0 && (
-                                            <div className="uber-itinerary__section">
-                                              <h5 className="uber-itinerary__section-title">From airport to city center</h5>
-                                              <div className="uber-rides-list">
-                                                {uberData.fromAirport.map((ride, rideIndex) => (
-                                                  <div key={rideIndex} className="uber-ride-card">
-                                                    <div className="uber-ride-card__header">
-                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
-                                                      {ride.priceUSD && (
-                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
-                                                      )}
+                                        <div className="uber-itinerary__flow">
+                                          {flight.direction === 'out' ? (
+                                            <>
+                                              {/* Outbound: Show from airport to city */}
+                                              {uberData?.fromAirport && uberData.fromAirport.length > 0 && (
+                                                <div className="uber-flow-leg">
+                                                  <div className="uber-flow-point uber-flow-point--start">
+                                                    <div className="uber-flow-point__label">{flight.destination}</div>
+                                                    <div className="uber-flow-point__subtitle">Airport</div>
+                                                  </div>
+                                                  <div className="uber-flow-line">
+                                                    <div className="uber-flow-line__connector"></div>
+                                                  </div>
+                                                  <div className="uber-flow-ride">
+                                                    <div className="uber-flow-ride__info">
+                                                      <UberCarIcon className="uber-flow-ride__icon" />
+                                                      <div className="uber-flow-ride__name">{uberData.fromAirport[0].displayName}</div>
+                                                      <div className="uber-flow-ride__price">{formatPrice(uberData.fromAirport[0].priceUSD)}</div>
                                                     </div>
-                                                    <div className="uber-ride-card__details">
-                                                      <span className="uber-ride-card__detail">
-                                                        <span className="uber-ride-card__detail-label">Duration:</span>
-                                                        {formatDuration(ride.duration)}
-                                                      </span>
-                                                      <span className="uber-ride-card__detail">
-                                                        <span className="uber-ride-card__detail-label">Distance:</span>
-                                                        {formatDistance(ride.distance)}
-                                                      </span>
-                                                      {ride.estimate && (
-                                                        <span className="uber-ride-card__detail">
-                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
-                                                          {ride.estimate}
-                                                        </span>
-                                                      )}
+                                                    <div className="uber-flow-ride__meta">
+                                                      <span>{formatDuration(uberData.fromAirport[0].duration)}</span>
+                                                      <span>•</span>
+                                                      <span>{formatDistance(uberData.fromAirport[0].distance)}</span>
                                                     </div>
                                                   </div>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          )}
-                                          {uberData?.toAirport && uberData.toAirport.length > 0 && (
-                                            <div className="uber-itinerary__section">
-                                              <h5 className="uber-itinerary__section-title">From city center to airport</h5>
-                                              <div className="uber-rides-list">
-                                                {uberData.toAirport.map((ride, rideIndex) => (
-                                                  <div key={rideIndex} className="uber-ride-card">
-                                                    <div className="uber-ride-card__header">
-                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
-                                                      {ride.priceUSD && (
-                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
-                                                      )}
+                                                  <div className="uber-flow-line">
+                                                    <div className="uber-flow-line__connector"></div>
+                                                  </div>
+                                                  <div className="uber-flow-point uber-flow-point--end">
+                                                    <div className="uber-flow-point__label">{getCityNameFromAirportCode(flight.destination)}</div>
+                                                    <div className="uber-flow-point__subtitle">City Center</div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <>
+                                              {/* Return: Show from city to airport */}
+                                              {uberData?.toAirport && uberData.toAirport.length > 0 && (
+                                                <div className="uber-flow-leg">
+                                                  <div className="uber-flow-point uber-flow-point--start">
+                                                    <div className="uber-flow-point__label">{getCityNameFromAirportCode(flight.destination)}</div>
+                                                    <div className="uber-flow-point__subtitle">City Center</div>
+                                                  </div>
+                                                  <div className="uber-flow-line">
+                                                    <div className="uber-flow-line__connector"></div>
+                                                  </div>
+                                                  <div className="uber-flow-ride">
+                                                    <div className="uber-flow-ride__icon">🚗</div>
+                                                    <div className="uber-flow-ride__info">
+                                                      <div className="uber-flow-ride__name">{uberData.toAirport[0].displayName}</div>
+                                                      <div className="uber-flow-ride__price">{formatPrice(uberData.toAirport[0].priceUSD)}</div>
                                                     </div>
-                                                    <div className="uber-ride-card__details">
-                                                      <span className="uber-ride-card__detail">
-                                                        <span className="uber-ride-card__detail-label">Duration:</span>
-                                                        {formatDuration(ride.duration)}
-                                                      </span>
-                                                      <span className="uber-ride-card__detail">
-                                                        <span className="uber-ride-card__detail-label">Distance:</span>
-                                                        {formatDistance(ride.distance)}
-                                                      </span>
-                                                      {ride.estimate && (
-                                                        <span className="uber-ride-card__detail">
-                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
-                                                          {ride.estimate}
-                                                        </span>
-                                                      )}
+                                                    <div className="uber-flow-ride__meta">
+                                                      <span>{formatDuration(uberData.toAirport[0].duration)}</span>
+                                                      <span>•</span>
+                                                      <span>{formatDistance(uberData.toAirport[0].distance)}</span>
                                                     </div>
                                                   </div>
-                                                ))}
-                                              </div>
-                                            </div>
+                                                  <div className="uber-flow-line">
+                                                    <div className="uber-flow-line__connector"></div>
+                                                  </div>
+                                                  <div className="uber-flow-point uber-flow-point--end">
+                                                    <div className="uber-flow-point__label">{flight.destination}</div>
+                                                    <div className="uber-flow-point__subtitle">Airport</div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </>
                                           )}
                                           {(!uberData?.fromAirport || uberData.fromAirport.length === 0) && (!uberData?.toAirport || uberData.toAirport.length === 0) && (
                                             <div className="uber-itinerary__empty">
@@ -1941,8 +1945,8 @@ export default function App() {
                                   <div className="flight-row__expanded">
                                     <div className="uber-itinerary">
                                       <h4 className="uber-itinerary__title">
-                                        <span className="uber-itinerary__icon">🚗</span>
-                                        Uber ride options
+                                        <UberCarIcon className="uber-itinerary__icon" />
+                                        Ground transportation
                                       </h4>
                                       {isFetchingUberData ? (
                                         <div className="uber-itinerary__loading">

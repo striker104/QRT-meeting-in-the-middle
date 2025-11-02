@@ -2148,7 +2148,10 @@ button {
 .uber-itinerary {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 0;
+  border: 1.5px solid #101010;
+  border-radius: 0;
+  overflow: hidden;
 }
 
 .uber-itinerary__title {
@@ -2156,13 +2159,25 @@ button {
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: 1.1rem;
+  padding: 16px 20px;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #101010;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: #f8f8f8;
+  border-bottom: 1.5px solid #101010;
 }
 
 .uber-itinerary__icon {
-  font-size: 1.3rem;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.uber-itinerary__icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .uber-itinerary__loading,
@@ -2183,90 +2198,161 @@ button {
   font-size: 0.9rem;
 }
 
-.uber-itinerary__content {
+.uber-itinerary__flow {
   display: flex;
   flex-direction: column;
-  gap: 24px;
 }
 
-.uber-itinerary__section {
+.uber-leg {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  border-bottom: 1.5px solid #101010;
 }
 
-.uber-itinerary__section-title {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #101010;
+.uber-leg:last-child {
+  border-bottom: none;
+}
+
+.uber-leg__label {
+  padding: 18px 20px 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding-bottom: 8px;
-  border-bottom: 1.5px solid rgba(16, 16, 16, 0.1);
+  color: rgba(16, 16, 16, 0.55);
 }
 
-.uber-rides-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.uber-ride-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1.5px solid rgba(16, 16, 16, 0.1);
-  border-radius: 12px;
-  transition: all 0.2s ease;
-}
-
-.uber-ride-card:hover {
-  border-color: #0066cc;
-  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.1);
-}
-
-.uber-ride-card__header {
-  display: flex;
+.uber-leg__layout {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 40px minmax(240px, 1fr) 40px minmax(140px, auto);
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 0;
+  padding: 0 20px 20px;
 }
 
-.uber-ride-card__name {
+.uber-leg__point {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.uber-leg__point-title {
   font-size: 1rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: #101010;
 }
 
-.uber-ride-card__price {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: #0066cc;
+.uber-leg__point-subtitle {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(16, 16, 16, 0.45);
+  font-weight: 500;
 }
 
-.uber-ride-card__details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.uber-ride-card__detail {
+.uber-leg__divider {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  color: rgba(16, 16, 16, 0.7);
+  justify-content: center;
 }
 
-.uber-ride-card__detail-label {
-  font-weight: 600;
-  color: rgba(16, 16, 16, 0.5);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.uber-leg__divider-line {
+  width: 100%;
+  height: 1.5px;
+  background: #101010;
+  position: relative;
+}
+
+.uber-leg__divider-line::after {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid #101010;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+
+.uber-leg__divider-line--reverse::after {
+  right: auto;
+  left: -4px;
+  border-left: none;
+  border-right: 4px solid #101010;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+
+.uber-leg__ride {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1.5px solid #101010;
+  background: #ffffff;
+  box-shadow: -6px 6px 0 rgba(16, 16, 16, 0.04);
+}
+
+.uber-leg__icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid #101010;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f8f8;
+}
+
+.uber-leg__icon {
+  width: 20px;
+  height: 20px;
+}
+
+.uber-leg__ride-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.uber-leg__ride-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.uber-leg__ride-name {
   font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(16, 16, 16, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  flex: 1;
+}
+
+.uber-leg__price {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #101010;
+}
+
+.uber-leg__ride-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: rgba(16, 16, 16, 0.65);
+  letter-spacing: 0.05em;
+}
+
+.uber-leg__meta-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(16, 16, 16, 0.4);
 }
 
 .flight-total {

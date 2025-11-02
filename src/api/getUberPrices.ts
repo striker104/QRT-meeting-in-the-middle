@@ -48,6 +48,24 @@ export interface UberPriceOptions {
   signal?: AbortSignal;
 }
 
+const UBER_SANDBOX_API_URL = 'https://sandbox-api.uber.com';
+
+interface UberApiPriceEstimate {
+  localized_display_name: string;
+  distance: number;
+  display_name: string;
+  product_id: string;
+  high_estimate: number;
+  low_estimate: number;
+  duration: number;
+  estimate: string;
+  currency_code: string;
+}
+
+interface UberApiPriceResponse {
+  prices: UberApiPriceEstimate[];
+}
+
 /**
  * Get Uber ride estimates from airport to city center or vice versa
  */
@@ -58,36 +76,119 @@ export async function getUberPrices(
   direction: 'from' | 'to',
   options: UberPriceOptions = {}
 ): Promise<UberItinerary> {
-  const apiKey = import.meta.env.VITE_UBER_API_KEY?.trim();
+  const serverToken = import.meta.env.VITE_UBER_SERVER_TOKEN?.trim();
   
-  // Check if we have Uber API key
-  if (!apiKey) {
+  // Check if we have Uber server token
+  if (!serverToken) {
+    console.warn('Uber server token not found. Using mock data. Set VITE_UBER_SERVER_TOKEN in your .env file.');
     // Return mock data for development
     return getMockUberPrices(airportCode, cityName, direction);
   }
 
   const airportCoords = getAirportCoordinates(airportCode);
   if (!airportCoords) {
-    return {
-      fromAirport: [],
-      toAirport: [],
-      error: `Could not find coordinates for airport ${airportCode}`
-    };
+    console.warn(`Could not find coordinates for airport ${airportCode}, using mock data`);
+    return getMockUberPrices(airportCode, cityName, direction);
   }
 
   try {
     // Determine start and end coordinates based on direction
-    const startCoords = direction === 'from' ? airportCoords : cityCoordinates;
-    const endCoords = direction === 'from' ? cityCoordinates : airportCoords;
+    const startLat = direction === 'from' ? airportCoords[1] : cityCoordinates[1];
+    const startLng = direction === 'from' ? airportCoords[0] : cityCoordinates[0];
+    const endLat = direction === 'from' ? cityCoordinates[1] : airportCoords[1];
+    const endLng = direction === 'from' ? cityCoordinates[0] : airportCoords[0];
 
-    // Use Uber API to get price estimates
-    // Note: Uber API requires OAuth authentication, so we'll use a proxy or mock for now
-    // In production, you'd need to implement proper OAuth flow
+    // Build the API URL with query parameters
+    const url = new URL(`${UBER_SANDBOX_API_URL}/v1/estimates/price`);
+    url.searchParams.set('start_latitude', startLat.toString());
+    url.searchParams.set('start_longitude', startLng.toString());
+    url.searchParams.set('end_latitude', endLat.toString());
+    url.searchParams.set('end_longitude', endLng.toString());
+
+    console.log(`Fetching Uber prices from Uber Sandbox API: ${url.toString()}`);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${serverToken}`,
+        'Content-Type': 'application/json',
+        'Accept-Language': 'en_US'
+      },
+      signal: options.signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Uber API error: ${response.status} ${response.statusText} - ${errorText}`);
+      // Fall back to mock data if API fails
+      return getMockUberPrices(airportCode, cityName, direction);
+    }
+
+    const data = (await response.json()) as UberApiPriceResponse;
     
-    // For now, return mock data
-    return getMockUberPrices(airportCode, cityName, direction);
+    if (!data.prices || data.prices.length === 0) {
+      console.warn('No price estimates returned from Uber API, using mock data');
+      return getMockUberPrices(airportCode, cityName, direction);
+    }
+
+    // Convert Uber API response to our format
+    const rides: UberRide[] = data.prices.map((price) => {
+      // Calculate average price if we have both high and low estimates
+      const avgPrice = price.high_estimate && price.low_estimate 
+        ? (price.high_estimate + price.low_estimate) / 2 
+        : price.high_estimate || price.low_estimate;
+
+      // Convert price to USD if needed (assuming prices are already in USD for sandbox)
+      let priceUSD = avgPrice;
+      if (price.currency_code && price.currency_code !== 'USD') {
+        // In a real app, you'd want to convert currencies here
+        console.warn(`Price is in ${price.currency_code}, not converting to USD`);
+      }
+
+      return {
+        rideType: price.product_id,
+        displayName: price.display_name || price.localized_display_name,
+        duration: price.duration || 0,
+        distance: price.distance ? Math.round(price.distance * 1000) : 0, // Convert km to meters
+        priceUSD: priceUSD,
+        priceRange: price.high_estimate && price.low_estimate ? {
+          low: price.low_estimate,
+          high: price.high_estimate
+        } : undefined,
+        currency: price.currency_code || 'USD',
+        estimate: price.estimate
+      };
+    });
+
+    // Filter to only the cheapest option
+    const cheapestRide = rides
+      .filter(ride => ride.priceUSD !== undefined && ride.priceUSD > 0)
+      .sort((a, b) => (a.priceUSD || Infinity) - (b.priceUSD || Infinity))[0];
+
+    if (!cheapestRide) {
+      console.warn('No valid rides found after filtering, using mock data');
+      return getMockUberPrices(airportCode, cityName, direction);
+    }
+
+    console.log(`Got Uber price estimate: ${cheapestRide.displayName} - $${cheapestRide.priceUSD}`);
+
+    if (direction === 'from') {
+      return {
+        fromAirport: [cheapestRide],
+        toAirport: []
+      };
+    } else {
+      return {
+        fromAirport: [],
+        toAirport: [cheapestRide]
+      };
+    }
   } catch (error) {
     console.error('Error fetching Uber prices:', error);
+    // Fall back to mock data on error
+    if ((error as Error).name !== 'AbortError') {
+      return getMockUberPrices(airportCode, cityName, direction);
+    }
     return {
       fromAirport: [],
       toAirport: [],
@@ -150,15 +251,28 @@ function getMockUberPrices(
     };
   });
 
+  // Filter to only the cheapest option
+  const cheapestRide = adjustedRides
+    .filter(ride => ride.priceUSD !== undefined)
+    .sort((a, b) => (a.priceUSD || Infinity) - (b.priceUSD || Infinity))[0];
+
+  if (!cheapestRide) {
+    return {
+      fromAirport: [],
+      toAirport: [],
+      error: 'No rides available'
+    };
+  }
+
   if (direction === 'from') {
     return {
-      fromAirport: adjustedRides,
+      fromAirport: [cheapestRide],
       toAirport: []
     };
   } else {
     return {
       fromAirport: [],
-      toAirport: adjustedRides
+      toAirport: [cheapestRide]
     };
   }
 }
