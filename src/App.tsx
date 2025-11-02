@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
-import { AttendeeScenario, CityTravelPlan, EventSummary } from './types';
+import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult } from './types';
 import { sampleScenario, cityCoordinates } from './data/sampleScenario';
 import { streamMeetingPlan } from './api/openRouterClient';
 
@@ -191,15 +191,31 @@ function deriveEventDates(scenario: AttendeeScenario) {
 }
 
 function chooseMeetingHub(travelHours: Record<string, number>) {
-  const [bestCity] =
-    Object.entries(travelHours)
-      .sort(([, hoursA], [, hoursB]) => hoursA - hoursB)
-      .at(0) ?? [];
+  const entries = Object.entries(travelHours).sort(([, hoursA], [, hoursB]) => hoursA - hoursB);
+  const bestCity = entries.length > 0 ? entries[0][0] : null;
 
   return bestCity ?? 'Singapore';
 }
 
-async function mockOptimiseScenario(scenario: AttendeeScenario): Promise<EventSummary> {
+// Helper function to convert OptimizationResult to EventSummary for backward compatibility
+function convertToEventSummary(result: OptimizationResult): EventSummary {
+  return {
+    event_location: result.event_location,
+    event_dates: result.event_dates,
+    event_span: {
+      start: result.event_span.start,
+      end: result.event_span.end
+    },
+    total_co2: result.total_co2_tonnes,
+    average_travel_hours: result.average_travel_hours,
+    median_travel_hours: result.median_travel_hours,
+    max_travel_hours: result.max_travel_hours,
+    min_travel_hours: result.min_travel_hours,
+    attendee_travel_hours: result.attendee_travel_hours
+  };
+}
+
+async function mockOptimiseScenario(scenario: AttendeeScenario): Promise<OptimizationResult[]> {
   await sleep(1200);
 
   const travelHours = deriveTravelHours(scenario);
@@ -219,21 +235,30 @@ async function mockOptimiseScenario(scenario: AttendeeScenario): Promise<EventSu
   const totalCo2 = Math.round(weightedTravelHours * 2.2);
   const plannedDates = deriveEventDates(scenario);
   const meetingHub = chooseMeetingHub(travelHours);
+  const totalSpanHours = (new Date(scenario.availability_window.end).getTime() - new Date(scenario.availability_window.start).getTime()) / (1000 * 60 * 60);
 
-  return {
-    event_location: meetingHub,
-    event_dates: plannedDates,
-    event_span: {
-      start: scenario.availability_window.start,
-      end: scenario.availability_window.end
-    },
-    total_co2: totalCo2,
-    average_travel_hours: Number(average.toFixed(2)),
-    median_travel_hours: Number(median.toFixed(2)),
-    max_travel_hours: Number(max.toFixed(2)),
-    min_travel_hours: Number(min.toFixed(2)),
-    attendee_travel_hours: travelHours
-  };
+  // Return array with single mock result (can be expanded to return multiple ranked results)
+  return [
+    {
+      rank: 1,
+      event_location: meetingHub,
+      phase_1_score: 5.5,
+      event_dates: plannedDates,
+      event_span: {
+        start: scenario.availability_window.start,
+        end: scenario.availability_window.end,
+        total_hours: totalSpanHours
+      },
+      total_co2_tonnes: totalCo2,
+      average_co2_per_person_tonnes: Number((totalCo2 / totalTravellers).toFixed(2)),
+      average_travel_hours: Number(average.toFixed(2)),
+      median_travel_hours: Number(median.toFixed(2)),
+      max_travel_hours: Number(max.toFixed(2)),
+      min_travel_hours: Number(min.toFixed(2)),
+      attendee_travel_hours: travelHours,
+      itinerary: [] // Empty itinerary for mock - will be populated by real API
+    }
+  ];
 }
 
 function formatDateRange(range: { start: string; end: string }) {
@@ -302,13 +327,18 @@ export default function App() {
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   const [optimiserError, setOptimiserError] = useState<string | null>(null);
   const [scenario, setScenario] = useState<AttendeeScenario | null>(null);
-  const [eventSummary, setEventSummary] = useState<EventSummary | null>(null);
+  const [optimizationResults, setOptimizationResults] = useState<OptimizationResult[]>([]);
+  const [selectedResultIndex, setSelectedResultIndex] = useState(0);
   const [executiveBrief, setExecutiveBrief] = useState('');
   const [hasRequestedBrief, setHasRequestedBrief] = useState(false);
   const [briefModel, setBriefModel] = useState<string | null>(null);
   const [isFetchingBrief, setIsFetchingBrief] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
   const activeBriefRequest = useRef<AbortController | null>(null);
+
+  // Get the currently selected result
+  const selectedResult = optimizationResults[selectedResultIndex] ?? null;
+  const eventSummary = selectedResult ? convertToEventSummary(selectedResult) : null;
 
   useEffect(() => {
     return () => {
@@ -363,7 +393,8 @@ export default function App() {
     setScenario(nextScenario);
     setView('optimising');
     setOptimiserError(null);
-    setEventSummary(null);
+    setOptimizationResults([]);
+    setSelectedResultIndex(0);
     setExecutiveBrief('');
     setBriefModel(null);
     setBriefError(null);
@@ -373,8 +404,12 @@ export default function App() {
     activeBriefRequest.current = null;
 
     try {
-      const summary = await mockOptimiseScenario(nextScenario);
-      setEventSummary(summary);
+      const results = await mockOptimiseScenario(nextScenario);
+      if (results.length === 0) {
+        throw new Error('No optimization results returned');
+      }
+      setOptimizationResults(results);
+      setSelectedResultIndex(0);
       setView('analysis');
     } catch (error) {
       console.error('Optimisation failed', error);
@@ -401,7 +436,8 @@ export default function App() {
     activeBriefRequest.current?.abort();
     setScenarioInput(JSON.stringify(scenario ?? sampleScenario, null, 2));
     setScenario(null);
-    setEventSummary(null);
+    setOptimizationResults([]);
+    setSelectedResultIndex(0);
     setExecutiveBrief('');
     setBriefModel(null);
     setBriefError(null);
@@ -411,36 +447,36 @@ export default function App() {
   };
 
   const travelStats = useMemo(() => {
-    if (!eventSummary) {
+    if (!selectedResult) {
       return [];
     }
 
     return [
       {
         label: 'Average travel time',
-        value: formatHours(eventSummary.average_travel_hours)
+        value: formatHours(selectedResult.average_travel_hours)
       },
       {
         label: 'Median travel time',
-        value: formatHours(eventSummary.median_travel_hours)
+        value: formatHours(selectedResult.median_travel_hours)
       },
       {
         label: 'Longest journey',
-        value: formatHours(eventSummary.max_travel_hours)
+        value: formatHours(selectedResult.max_travel_hours)
       },
       {
         label: 'Shortest journey',
-        value: formatHours(eventSummary.min_travel_hours)
+        value: formatHours(selectedResult.min_travel_hours)
       }
     ];
-  }, [eventSummary]);
+  }, [selectedResult]);
 
   const travelHoursByCity = useMemo(
     () =>
-      eventSummary
-        ? Object.entries(eventSummary.attendee_travel_hours).sort(([, a], [, b]) => b - a)
+      selectedResult
+        ? Object.entries(selectedResult.attendee_travel_hours).sort(([, a], [, b]) => b - a)
         : [],
-    [eventSummary]
+    [selectedResult]
   );
 
   const totalAttendees = useMemo(
@@ -510,15 +546,37 @@ export default function App() {
         </div>
       )}
 
-      {view === 'analysis' && eventSummary && scenario && meetingLocation ? (
+      {view === 'analysis' && selectedResult && eventSummary && scenario && meetingLocation ? (
         <div className="analysis-screen">
+          {optimizationResults.length > 1 && (
+            <div className="analysis-rank-selector">
+              <label>Select solution:</label>
+              <div className="analysis-rank-buttons">
+                {optimizationResults.map((result, index) => (
+                  <button
+                    key={result.rank}
+                    className={`rank-button ${index === selectedResultIndex ? 'rank-button--active' : ''}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedResultIndex(index);
+                      setHasRequestedBrief(false);
+                      setExecutiveBrief('');
+                    }}
+                  >
+                    Rank {result.rank}
+                    <span className="rank-button__score">Score: {result.phase_1_score.toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <header className="analysis-hero">
             <div className="analysis-hero__info">
-              <span className="analysis-hero__tag">Optimised outcome</span>
-              <h1>{eventSummary.event_location}</h1>
-              <p className="analysis-hero__headline">{formatDateRange(eventSummary.event_dates)}</p>
+              <span className="analysis-hero__tag">Optimised outcome #{selectedResult.rank}</span>
+              <h1>{selectedResult.event_location}</h1>
+              <p className="analysis-hero__headline">{formatDateRange(selectedResult.event_dates)}</p>
               <p className="analysis-hero__detail">
-                Availability window: {formatDateRange(eventSummary.event_span)}
+                Availability window: {formatDateRange(selectedResult.event_span)}
               </p>
               <p className="analysis-hero__detail">
                 {totalAttendees} attendees across {Object.keys(scenario.attendees).length} cities
@@ -528,7 +586,11 @@ export default function App() {
             <div className="analysis-hero__metrics">
               <div className="analysis-stat">
                 <span>Total CO₂e</span>
-                <strong>{formatCo2(eventSummary.total_co2)}</strong>
+                <strong>{formatCo2(selectedResult.total_co2_tonnes)}</strong>
+              </div>
+              <div className="analysis-stat">
+                <span>Avg CO₂ per person</span>
+                <strong>{formatCo2(selectedResult.average_co2_per_person_tonnes)}</strong>
               </div>
               {travelStats.map((stat) => (
                 <div key={stat.label} className="analysis-stat">
@@ -572,12 +634,18 @@ export default function App() {
                 <ul className="analysis-note-list">
                   <li>
                     <span>Primary window</span>
-                    <strong>{formatDateRange(eventSummary.event_dates)}</strong>
+                    <strong>{formatDateRange(selectedResult.event_dates)}</strong>
                   </li>
                   <li>
                     <span>Availability buffer</span>
-                    <strong>{formatDateRange(eventSummary.event_span)}</strong>
+                    <strong>{formatDateRange(selectedResult.event_span)}</strong>
                   </li>
+                  {selectedResult.itinerary.length > 0 && (
+                    <li>
+                      <span>Total flights</span>
+                      <strong>{selectedResult.itinerary.length}</strong>
+                    </li>
+                  )}
                   <li>
                     <span>Total attendees</span>
                     <strong>{totalAttendees}</strong>
@@ -602,7 +670,7 @@ export default function App() {
         </div>
       ) : null}
 
-      {view === 'world' && scenario && eventSummary && meetingLocation ? (
+      {view === 'world' && scenario && selectedResult && eventSummary && meetingLocation ? (
         <div className="world-screen">
           <header className="world-header">
             <button className="ghost-button" type="button" onClick={() => setView('analysis')}>
@@ -610,8 +678,8 @@ export default function App() {
             </button>
             <div className="world-header__titles">
               <span className="world-header__tag">Journey simulation</span>
-              <h1>{eventSummary.event_location}</h1>
-              <p>{formatDateRange(eventSummary.event_dates)}</p>
+              <h1>{selectedResult.event_location}</h1>
+              <p>{formatDateRange(selectedResult.event_dates)}</p>
             </div>
           </header>
 
@@ -626,7 +694,11 @@ export default function App() {
           <section className="world-metrics">
             <article className="world-metric">
               <span>Total CO₂e</span>
-              <strong>{formatCo2(eventSummary.total_co2)}</strong>
+              <strong>{formatCo2(selectedResult.total_co2_tonnes)}</strong>
+            </article>
+            <article className="world-metric">
+              <span>Avg CO₂ per person</span>
+              <strong>{formatCo2(selectedResult.average_co2_per_person_tonnes)}</strong>
             </article>
             {travelStats.map((stat) => (
               <article key={stat.label} className="world-metric">
@@ -650,7 +722,7 @@ export default function App() {
                     <span className="city-card__time">{formatHours(hours)}</span>
                   </div>
                   <span className="city-card__tag">
-                    {hours > eventSummary.average_travel_hours ? 'Long haul' : 'Quick hop'}
+                    {hours > selectedResult.average_travel_hours ? 'Long haul' : 'Quick hop'}
                   </span>
                 </article>
               ))}

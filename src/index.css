@@ -1008,6 +1008,64 @@ button {
   color: #101010;
 }
 
+.analysis-rank-selector {
+  margin-bottom: 32px;
+  padding: 20px 24px;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: -8px 8px 0 rgba(16, 16, 16, 0.04);
+}
+
+.analysis-rank-selector label {
+  display: block;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.analysis-rank-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rank-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  border: 1.5px solid #101010;
+  border-radius: 12px;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.rank-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(16, 16, 16, 0.1);
+}
+
+.rank-button--active {
+  background: #101010;
+  color: #ffffff;
+}
+
+.rank-button__score {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.rank-button--active .rank-button__score {
+  opacity: 0.9;
+}
+
 .analysis-actions {
   display: flex;
   align-items: center;
