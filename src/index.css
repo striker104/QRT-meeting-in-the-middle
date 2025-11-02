@@ -2180,6 +2180,23 @@ button {
   height: 100%;
 }
 
+.uber-itinerary__title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uber-itinerary__title-text span:first-child {
+  letter-spacing: 0.12em;
+}
+
+.uber-itinerary__note {
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(16, 16, 16, 0.5);
+}
+
 .uber-itinerary__loading,
 .uber-itinerary__error,
 .uber-itinerary__empty {
