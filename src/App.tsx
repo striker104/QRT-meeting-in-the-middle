@@ -939,7 +939,7 @@ export default function App() {
   };
 
   const renderUberItineraryContent = (
-    flightRow: { destination: string },
+    flightRow: { destination: string; direction: 'out' | 'in' },
     itinerary: UberItinerary | undefined,
     loading: boolean
   ) => {
@@ -962,30 +962,36 @@ export default function App() {
 
     const legs: JSX.Element[] = [];
 
-    const arrivalLeg = renderUberLeg(
-      itinerary?.fromAirport?.[0],
-      'Arrival transfer',
-      flightRow.destination,
-      'Airport',
-      getCityNameFromAirportCode(flightRow.destination),
-      'City centre'
-    );
+    // For outbound flights (departure), show departure transfer (city to airport)
+    // For return flights (arrival), show arrival transfer (airport to city)
+    if (flightRow.direction === 'out') {
+      // Departure: show transfer from city to airport
+      const departureLeg = renderUberLeg(
+        itinerary?.toAirport?.[0],
+        'Departure transfer',
+        getCityNameFromAirportCode(flightRow.destination),
+        'City centre',
+        flightRow.destination,
+        'Airport'
+      );
 
-    if (arrivalLeg) {
-      legs.push(arrivalLeg);
-    }
+      if (departureLeg) {
+        legs.push(departureLeg);
+      }
+    } else {
+      // Arrival: show transfer from airport to city
+      const arrivalLeg = renderUberLeg(
+        itinerary?.fromAirport?.[0],
+        'Arrival transfer',
+        flightRow.destination,
+        'Airport',
+        getCityNameFromAirportCode(flightRow.destination),
+        'City centre'
+      );
 
-    const departureLeg = renderUberLeg(
-      itinerary?.toAirport?.[0],
-      'Departure transfer',
-      getCityNameFromAirportCode(flightRow.destination),
-      'City centre',
-      flightRow.destination,
-      'Airport'
-    );
-
-    if (departureLeg) {
-      legs.push(departureLeg);
+      if (arrivalLeg) {
+        legs.push(arrivalLeg);
+      }
     }
 
     if (legs.length === 0) {
@@ -1911,7 +1917,7 @@ export default function App() {
                                           <span className="uber-itinerary__note">Rates from Uber Sandbox</span>
                                         </div>
                                       </div>
-                                      {renderUberItineraryContent(flight, uberData, isFetchingUberData)}
+                                      {renderUberItineraryContent({ destination: flight.destination, direction: flight.direction }, uberData, isFetchingUberData)}
                                     </div>
                                   </div>
                                 )}
@@ -2000,7 +2006,7 @@ export default function App() {
                                           <span className="uber-itinerary__note">Rates from Uber Sandbox</span>
                                         </div>
                                       </div>
-                                      {renderUberItineraryContent(flight, uberData, isFetchingUberData)}
+                                      {renderUberItineraryContent({ destination: flight.destination, direction: flight.direction }, uberData, isFetchingUberData)}
                                     </div>
                                   </div>
                                 )}
