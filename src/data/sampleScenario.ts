@@ -9,8 +9,8 @@ export const sampleScenario: AttendeeScenario = {
     Sydney: 2
   },
   availability_window: {
-    start: '2025-12-10T09:00:00Z',
-    end: '2025-12-15T17:00:00Z'
+    start: '2025-05-01T09:00:00Z',
+    end: '2025-05-06T17:00:00Z'
   },
   event_duration: {
     days: 0,
