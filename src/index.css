@@ -1953,6 +1953,7 @@ button {
   background: #ffffff;
   box-shadow: -4px 4px 0 rgba(16, 16, 16, 0.04);
   align-items: center;
+  position: relative;
 }
 
 .flight-row--enhanced {
@@ -2087,6 +2088,185 @@ button {
   font-style: italic;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.flight-row-wrapper {
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+}
+
+.flight-row-wrapper--expanded {
+  margin-bottom: 16px;
+}
+
+.flight-row--clickable {
+  cursor: pointer;
+  position: relative;
+  padding-right: 40px;
+}
+
+.flight-row--clickable:hover {
+  background: #fafafa;
+}
+
+.flight-row__expand-icon {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: #0066cc;
+  transition: transform 0.2s ease;
+}
+
+.flight-row-wrapper--expanded .flight-row__expand-icon {
+  transform: translateY(-50%) rotate(0deg);
+}
+
+.flight-row__expanded {
+  margin-top: 16px;
+  padding: 24px;
+  background: #f9f9f9;
+  border: 1.5px solid #101010;
+  border-radius: 16px;
+  box-shadow: -4px 4px 0 rgba(16, 16, 16, 0.04);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.uber-itinerary {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.uber-itinerary__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #101010;
+}
+
+.uber-itinerary__icon {
+  font-size: 1.3rem;
+}
+
+.uber-itinerary__loading,
+.uber-itinerary__error,
+.uber-itinerary__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 12px;
+}
+
+.uber-itinerary__error p,
+.uber-itinerary__empty p {
+  margin: 0;
+  color: rgba(16, 16, 16, 0.65);
+  font-size: 0.9rem;
+}
+
+.uber-itinerary__content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.uber-itinerary__section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.uber-itinerary__section-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #101010;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding-bottom: 8px;
+  border-bottom: 1.5px solid rgba(16, 16, 16, 0.1);
+}
+
+.uber-rides-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.uber-ride-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1.5px solid rgba(16, 16, 16, 0.1);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.uber-ride-card:hover {
+  border-color: #0066cc;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.1);
+}
+
+.uber-ride-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.uber-ride-card__name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #101010;
+}
+
+.uber-ride-card__price {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0066cc;
+}
+
+.uber-ride-card__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.uber-ride-card__detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: rgba(16, 16, 16, 0.7);
+}
+
+.uber-ride-card__detail-label {
+  font-weight: 600;
+  color: rgba(16, 16, 16, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
 }
 
 .flight-total {
@@ -2296,7 +2476,6 @@ button {
   .world-header__titles {
     align-items: flex-start;
   }
-
   .world-metrics {
     grid-template-columns: 1fr;
   }
@@ -2306,3 +2485,4 @@ button {
     width: 100%;
   }
 }
+

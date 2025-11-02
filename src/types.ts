@@ -101,3 +101,24 @@ export interface AccommodationPrice {
   bookingLink?: string;
   error?: string;
 }
+
+// Uber ride data
+export interface UberRide {
+  rideType: string;
+  displayName: string;
+  duration: number; // in seconds
+  distance: number; // in meters
+  priceUSD?: number;
+  priceRange?: {
+    low: number;
+    high: number;
+  };
+  currency?: string;
+  estimate?: string;
+}
+
+export interface UberItinerary {
+  fromAirport: UberRide[];
+  toAirport: UberRide[];
+  error?: string;
+}

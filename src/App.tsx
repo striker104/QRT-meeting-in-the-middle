@@ -1,10 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
-import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice, AccommodationPrice } from './types';
+import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice, AccommodationPrice, UberItinerary } from './types';
 import { sampleScenario, cityCoordinates } from './data/sampleScenario';
 import { streamMeetingPlan } from './api/openRouterClient';
 import { getFlightPrices, getAccommodationPrice } from './api/getPrices';
+import { getUberPrices } from './api/getUberPrices';
 import { getCityNameFromAirportCode } from './data/airportCodes';
 
 type ViewState = 'onboarding' | 'optimising' | 'analysis' | 'world';
@@ -396,6 +397,27 @@ function formatPrice(priceUSD: number | undefined): string {
   return `$${priceUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatDuration(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (remainingMinutes === 0) {
+    return `${hours} h`;
+  }
+  return `${hours} h ${remainingMinutes} min`;
+}
+
+function formatDistance(meters: number): string {
+  const km = meters / 1000;
+  if (km < 1) {
+    return `${Math.round(meters)} m`;
+  }
+  return `${km.toFixed(1)} km`;
+}
+
 function calculateTotalPrice(prices: FlightPrice[]): number {
   return prices.reduce((total, flight) => {
     if (flight.priceUSD !== undefined && Number.isFinite(flight.priceUSD)) {
@@ -465,6 +487,9 @@ export default function App() {
   const [isFetchingAccommodation, setIsFetchingAccommodation] = useState(false);
   const [accommodationError, setAccommodationError] = useState<string | null>(null);
   const [hotelStars, setHotelStars] = useState<number>(4);
+  const [expandedFlightKey, setExpandedFlightKey] = useState<string | null>(null);
+  const [uberItineraries, setUberItineraries] = useState<Map<string, UberItinerary>>(new Map());
+  const [isFetchingUber, setIsFetchingUber] = useState<Set<string>>(new Set());
   const activeBriefRequests = useRef<Map<number, AbortController>>(new Map());
   const activePriceRequests = useRef<Map<number, AbortController>>(new Map());
   const activeAccommodationRequests = useRef<Map<number, AbortController>>(new Map());
@@ -840,6 +865,86 @@ export default function App() {
     () => (eventSummary ? deriveMeetingLocation(eventSummary) : null),
     [eventSummary]
   );
+
+  // Handle flight row click to expand and fetch Uber data
+  const handleFlightClick = useCallback(async (
+    flight: {
+      origin: string;
+      destination: string;
+      carrier: string;
+      flightNumber: number;
+      departureTime: string;
+      passengers: number;
+      direction: 'out' | 'in';
+    },
+    selectedResult: OptimizationResult
+  ) => {
+    // Create a unique key for this flight
+    const flightKey = `${flight.origin}-${flight.destination}-${flight.carrier}-${flight.flightNumber}-${flight.direction}`;
+    
+    // Toggle expansion
+    if (expandedFlightKey === flightKey) {
+      setExpandedFlightKey(null);
+      return;
+    }
+    
+    setExpandedFlightKey(flightKey);
+    
+    // Check if we already have Uber data for this flight
+    if (uberItineraries.has(flightKey)) {
+      return;
+    }
+    
+    // Fetch Uber data for both directions
+    setIsFetchingUber((prev) => new Set(prev).add(flightKey));
+    
+    try {
+      const destinationCity = getCityNameFromAirportCode(flight.destination);
+      
+      // Get city coordinates for the destination (where the flight lands)
+      const destinationCoords = meetingCoordinateDirectory[destinationCity] ?? meetingCoordinateDirectory[flight.destination];
+      
+      if (!destinationCoords) {
+        throw new Error(`Could not find coordinates for airport ${flight.destination} (${destinationCity})`);
+      }
+      
+      // Fetch Uber prices for both directions (from airport to city, and from city to airport)
+      const [fromAirportResult, toAirportResult] = await Promise.all([
+        getUberPrices(flight.destination, destinationCity, destinationCoords, 'from', {}),
+        getUberPrices(flight.destination, destinationCity, destinationCoords, 'to', {})
+      ]);
+      
+      // Combine the results - prioritize results that have data
+      const combinedItinerary: UberItinerary = {
+        fromAirport: fromAirportResult.fromAirport.length > 0 ? fromAirportResult.fromAirport : toAirportResult.fromAirport,
+        toAirport: toAirportResult.toAirport.length > 0 ? toAirportResult.toAirport : fromAirportResult.toAirport,
+        error: fromAirportResult.error || toAirportResult.error
+      };
+      
+      setUberItineraries((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(flightKey, combinedItinerary);
+        return newMap;
+      });
+    } catch (error) {
+      console.error('Error fetching Uber prices:', error);
+      setUberItineraries((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(flightKey, {
+          fromAirport: [],
+          toAirport: [],
+          error: error instanceof Error ? error.message : 'Failed to fetch Uber prices'
+        });
+        return newMap;
+      });
+    } finally {
+      setIsFetchingUber((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(flightKey);
+        return newSet;
+      });
+    }
+  }, [expandedFlightKey, uberItineraries]);
 
   // Get brief data for the currently selected result
   const currentBrief = selectedResult ? executiveBriefs.get(selectedResult.rank) : undefined;
@@ -1379,7 +1484,7 @@ export default function App() {
                     <div className="analysis-side-card analysis-side-card--price analysis-side-card--combined">
                       <div className="price-card-header">
                         <h3>
-                          <span className="price-card-icon">💰</span>
+                          {/* <span className="price-card-icon">💰</span> */}
                           Total trip cost
                         </h3>
                       </div>
@@ -1461,7 +1566,7 @@ export default function App() {
               if (hasPrices || isFetchingPrices || selectedResult.itinerary.length > 0) {
                 return (
                   <article className="world-metric world-metric--price world-metric--highlight">
-                    <div className="world-metric__icon">💰</div>
+                    {/* <div className="world-metric__icon">💰</div> */}
                     <div className="world-metric__content">
                       <span>Total flight cost</span>
                       {hasPrices ? (
@@ -1482,7 +1587,7 @@ export default function App() {
               if (hasAccommodationPrice || isFetchingAccommodation || selectedResult.rank > 0) {
                 return (
                   <article className="world-metric world-metric--price world-metric--highlight">
-                    <div className="world-metric__icon">🏨</div>
+                    {/* <div className="world-metric__icon">🏨</div> */}
                     <div className="world-metric__content">
                       <span>Accommodation cost ({hotelStars}★)</span>
                       {hasAccommodationPrice && accommodation ? (
@@ -1518,7 +1623,7 @@ export default function App() {
                     <span className="city-card__time">{formatHours(hours)}</span>
                   </div>
                   <span className="city-card__tag">
-                    {hours > selectedResult.average_travel_hours ? 'Long haul' : 'Quick hop'}
+                    {hours >= 5 ? 'Long haul' : 'Quick hop'}
                   </span>
                 </article>
               ))}
@@ -1611,38 +1716,152 @@ export default function App() {
                             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                             const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                             const flightTotal = flight.priceUSD ? flight.priceUSD * flight.passengers : 0;
+                            const flightKey = `${flight.origin}-${flight.destination}-${flight.carrier}-${flight.flightNumber}-${flight.direction}`;
+                            const isExpanded = expandedFlightKey === flightKey;
+                            const uberData = uberItineraries.get(flightKey);
+                            const isFetchingUberData = isFetchingUber.has(flightKey);
                             
                             return (
-                              <div key={index} className="flight-row flight-row--enhanced">
-                                <div className="flight-row__route">
-                                  <div className="flight-row__airports-wrapper">
-                                    <span className="flight-row__airports">{flight.origin}</span>
-                                    <div className="flight-row__connector">
-                                      <div className="flight-row__connector-line"></div>
-                                      <span className="flight-row__connector-arrow">→</span>
+                              <div key={index} className={`flight-row-wrapper ${isExpanded ? 'flight-row-wrapper--expanded' : ''}`}>
+                                <div 
+                                  className="flight-row flight-row--enhanced flight-row--clickable"
+                                  onClick={() => handleFlightClick(flight, selectedResult)}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      handleFlightClick(flight, selectedResult);
+                                    }
+                                  }}
+                                >
+                                  <div className="flight-row__route">
+                                    <div className="flight-row__airports-wrapper">
+                                      <span className="flight-row__airports">{flight.origin}</span>
+                                      <div className="flight-row__connector">
+                                        <div className="flight-row__connector-line"></div>
+                                        <span className="flight-row__connector-arrow">→</span>
+                                      </div>
+                                      <span className="flight-row__airports">{flight.destination}</span>
                                     </div>
-                                    <span className="flight-row__airports">{flight.destination}</span>
+                                    <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
                                   </div>
-                                  <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
-                                </div>
-                                <div className="flight-row__details">
-                                  <div className="flight-row__date-wrapper">
-                                    <span className="flight-row__date">{dateStr}</span>
-                                    <span className="flight-row__time">{timeStr}</span>
-                                  </div>
-                                  <span className="flight-row__stops">{flight.stopType}</span>
-                                </div>
-                                <div className="flight-row__pricing">
-                                  <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
-                                  {flight.priceUSD !== undefined ? (
-                                    <div className="flight-row__price-breakdown">
-                                      <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
-                                      <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                  <div className="flight-row__details">
+                                    <div className="flight-row__date-wrapper">
+                                      <span className="flight-row__date">{dateStr}</span>
+                                      <span className="flight-row__time">{timeStr}</span>
                                     </div>
-                                  ) : (
-                                    <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
-                                  )}
+                                    <span className="flight-row__stops">{flight.stopType}</span>
+                                  </div>
+                                  <div className="flight-row__pricing">
+                                    <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
+                                    {flight.priceUSD !== undefined ? (
+                                      <div className="flight-row__price-breakdown">
+                                        <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
+                                        <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                      </div>
+                                    ) : (
+                                      <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
+                                    )}
+                                  </div>
+                                  <div className="flight-row__expand-icon">
+                                    {isExpanded ? '▼' : '▶'}
+                                  </div>
                                 </div>
+                                {isExpanded && (
+                                  <div className="flight-row__expanded">
+                                    <div className="uber-itinerary">
+                                      <h4 className="uber-itinerary__title">
+                                        <span className="uber-itinerary__icon">🚗</span>
+                                        Uber ride options
+                                      </h4>
+                                      {isFetchingUberData ? (
+                                        <div className="uber-itinerary__loading">
+                                          <div className="price-loading-mini__spinner" aria-hidden="true" />
+                                          <p>Finding Uber prices…</p>
+                                        </div>
+                                      ) : uberData?.error ? (
+                                        <div className="uber-itinerary__error">
+                                          <p>{uberData.error}</p>
+                                        </div>
+                                      ) : (
+                                        <div className="uber-itinerary__content">
+                                          {uberData?.fromAirport && uberData.fromAirport.length > 0 && (
+                                            <div className="uber-itinerary__section">
+                                              <h5 className="uber-itinerary__section-title">From airport to city center</h5>
+                                              <div className="uber-rides-list">
+                                                {uberData.fromAirport.map((ride, rideIndex) => (
+                                                  <div key={rideIndex} className="uber-ride-card">
+                                                    <div className="uber-ride-card__header">
+                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
+                                                      {ride.priceUSD && (
+                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
+                                                      )}
+                                                    </div>
+                                                    <div className="uber-ride-card__details">
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Duration:</span>
+                                                        {formatDuration(ride.duration)}
+                                                      </span>
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Distance:</span>
+                                                        {formatDistance(ride.distance)}
+                                                      </span>
+                                                      {ride.estimate && (
+                                                        <span className="uber-ride-card__detail">
+                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
+                                                          {ride.estimate}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {uberData?.toAirport && uberData.toAirport.length > 0 && (
+                                            <div className="uber-itinerary__section">
+                                              <h5 className="uber-itinerary__section-title">From city center to airport</h5>
+                                              <div className="uber-rides-list">
+                                                {uberData.toAirport.map((ride, rideIndex) => (
+                                                  <div key={rideIndex} className="uber-ride-card">
+                                                    <div className="uber-ride-card__header">
+                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
+                                                      {ride.priceUSD && (
+                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
+                                                      )}
+                                                    </div>
+                                                    <div className="uber-ride-card__details">
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Duration:</span>
+                                                        {formatDuration(ride.duration)}
+                                                      </span>
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Distance:</span>
+                                                        {formatDistance(ride.distance)}
+                                                      </span>
+                                                      {ride.estimate && (
+                                                        <span className="uber-ride-card__detail">
+                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
+                                                          {ride.estimate}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {(!uberData?.fromAirport || uberData.fromAirport.length === 0) && (!uberData?.toAirport || uberData.toAirport.length === 0) && (
+                                            <div className="uber-itinerary__empty">
+                                              <p>No Uber options available</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -1666,38 +1885,152 @@ export default function App() {
                             const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                             const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                             const flightTotal = flight.priceUSD ? flight.priceUSD * flight.passengers : 0;
+                            const flightKey = `${flight.origin}-${flight.destination}-${flight.carrier}-${flight.flightNumber}-${flight.direction}`;
+                            const isExpanded = expandedFlightKey === flightKey;
+                            const uberData = uberItineraries.get(flightKey);
+                            const isFetchingUberData = isFetchingUber.has(flightKey);
                             
                             return (
-                              <div key={index} className="flight-row flight-row--enhanced">
-                                <div className="flight-row__route">
-                                  <div className="flight-row__airports-wrapper">
-                                    <span className="flight-row__airports">{flight.origin}</span>
-                                    <div className="flight-row__connector">
-                                      <div className="flight-row__connector-line"></div>
-                                      <span className="flight-row__connector-arrow">→</span>
+                              <div key={index} className={`flight-row-wrapper ${isExpanded ? 'flight-row-wrapper--expanded' : ''}`}>
+                                <div 
+                                  className="flight-row flight-row--enhanced flight-row--clickable"
+                                  onClick={() => handleFlightClick(flight, selectedResult)}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      handleFlightClick(flight, selectedResult);
+                                    }
+                                  }}
+                                >
+                                  <div className="flight-row__route">
+                                    <div className="flight-row__airports-wrapper">
+                                      <span className="flight-row__airports">{flight.origin}</span>
+                                      <div className="flight-row__connector">
+                                        <div className="flight-row__connector-line"></div>
+                                        <span className="flight-row__connector-arrow">→</span>
+                                      </div>
+                                      <span className="flight-row__airports">{flight.destination}</span>
                                     </div>
-                                    <span className="flight-row__airports">{flight.destination}</span>
+                                    <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
                                   </div>
-                                  <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
-                                </div>
-                                <div className="flight-row__details">
-                                  <div className="flight-row__date-wrapper">
-                                    <span className="flight-row__date">{dateStr}</span>
-                                    <span className="flight-row__time">{timeStr}</span>
-                                  </div>
-                                  <span className="flight-row__stops">{flight.stopType}</span>
-                                </div>
-                                <div className="flight-row__pricing">
-                                  <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
-                                  {flight.priceUSD !== undefined ? (
-                                    <div className="flight-row__price-breakdown">
-                                      <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
-                                      <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                  <div className="flight-row__details">
+                                    <div className="flight-row__date-wrapper">
+                                      <span className="flight-row__date">{dateStr}</span>
+                                      <span className="flight-row__time">{timeStr}</span>
                                     </div>
-                                  ) : (
-                                    <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
-                                  )}
+                                    <span className="flight-row__stops">{flight.stopType}</span>
+                                  </div>
+                                  <div className="flight-row__pricing">
+                                    <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
+                                    {flight.priceUSD !== undefined ? (
+                                      <div className="flight-row__price-breakdown">
+                                        <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
+                                        <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                      </div>
+                                    ) : (
+                                      <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
+                                    )}
+                                  </div>
+                                  <div className="flight-row__expand-icon">
+                                    {isExpanded ? '▼' : '▶'}
+                                  </div>
                                 </div>
+                                {isExpanded && (
+                                  <div className="flight-row__expanded">
+                                    <div className="uber-itinerary">
+                                      <h4 className="uber-itinerary__title">
+                                        <span className="uber-itinerary__icon">🚗</span>
+                                        Uber ride options
+                                      </h4>
+                                      {isFetchingUberData ? (
+                                        <div className="uber-itinerary__loading">
+                                          <div className="price-loading-mini__spinner" aria-hidden="true" />
+                                          <p>Finding Uber prices…</p>
+                                        </div>
+                                      ) : uberData?.error ? (
+                                        <div className="uber-itinerary__error">
+                                          <p>{uberData.error}</p>
+                                        </div>
+                                      ) : (
+                                        <div className="uber-itinerary__content">
+                                          {uberData?.fromAirport && uberData.fromAirport.length > 0 && (
+                                            <div className="uber-itinerary__section">
+                                              <h5 className="uber-itinerary__section-title">From airport to city center</h5>
+                                              <div className="uber-rides-list">
+                                                {uberData.fromAirport.map((ride, rideIndex) => (
+                                                  <div key={rideIndex} className="uber-ride-card">
+                                                    <div className="uber-ride-card__header">
+                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
+                                                      {ride.priceUSD && (
+                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
+                                                      )}
+                                                    </div>
+                                                    <div className="uber-ride-card__details">
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Duration:</span>
+                                                        {formatDuration(ride.duration)}
+                                                      </span>
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Distance:</span>
+                                                        {formatDistance(ride.distance)}
+                                                      </span>
+                                                      {ride.estimate && (
+                                                        <span className="uber-ride-card__detail">
+                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
+                                                          {ride.estimate}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {uberData?.toAirport && uberData.toAirport.length > 0 && (
+                                            <div className="uber-itinerary__section">
+                                              <h5 className="uber-itinerary__section-title">From city center to airport</h5>
+                                              <div className="uber-rides-list">
+                                                {uberData.toAirport.map((ride, rideIndex) => (
+                                                  <div key={rideIndex} className="uber-ride-card">
+                                                    <div className="uber-ride-card__header">
+                                                      <span className="uber-ride-card__name">{ride.displayName}</span>
+                                                      {ride.priceUSD && (
+                                                        <strong className="uber-ride-card__price">{formatPrice(ride.priceUSD)}</strong>
+                                                      )}
+                                                    </div>
+                                                    <div className="uber-ride-card__details">
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Duration:</span>
+                                                        {formatDuration(ride.duration)}
+                                                      </span>
+                                                      <span className="uber-ride-card__detail">
+                                                        <span className="uber-ride-card__detail-label">Distance:</span>
+                                                        {formatDistance(ride.distance)}
+                                                      </span>
+                                                      {ride.estimate && (
+                                                        <span className="uber-ride-card__detail">
+                                                          <span className="uber-ride-card__detail-label">Estimate:</span>
+                                                          {ride.estimate}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {(!uberData?.fromAirport || uberData.fromAirport.length === 0) && (!uberData?.toAirport || uberData.toAirport.length === 0) && (
+                                            <div className="uber-itinerary__empty">
+                                              <p>No Uber options available</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
