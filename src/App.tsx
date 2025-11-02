@@ -1506,7 +1506,7 @@ export default function App() {
 
                 <div className="weight-control">
                   <label htmlFor="weight-avg-vs-std">
-                    Average vs Equality Balance
+                    Std Dev vs Average Travel Tim
                     <span className="weight-label__value">
                       {Math.round(weightAvgVsStd * 100)}% Average, {Math.round((1 - weightAvgVsStd) * 100)}% Equality
                     </span>

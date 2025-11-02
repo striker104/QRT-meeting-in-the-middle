@@ -6,7 +6,7 @@ from pathlib import Path
 import json
 import tempfile
 
-# Add the brain directory to the path so we can import find_best_meeting
+# Add the brain directory to the path so we can  import find_best_meeting
 # Get the project root directory (parent of server directory)
 project_root = Path(__file__).parent.parent
 brain_dir = project_root / "brain"
