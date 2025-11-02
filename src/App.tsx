@@ -1,64 +1,24 @@
-import { useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
-import { AttendeeScenario, CityTravelPlan } from './types';
+import { AttendeeScenario, CityTravelPlan, EventSummary } from './types';
+import { sampleScenario, cityCoordinates } from './data/sampleScenario';
+import { streamMeetingPlan } from './api/openRouterClient';
 
-type BackendEventSummary = {
-  event_location: string;
-  event_dates: {
-    start: string;
-    end: string;
-  };
-  event_span: {
-    start: string;
-    end: string;
-  };
-  total_co2: number;
-  average_travel_hours: number;
-  median_travel_hours: number;
-  max_travel_hours: number;
-  min_travel_hours: number;
-  attendee_travel_hours: Record<string, number>;
+type ViewState = 'onboarding' | 'optimising' | 'analysis' | 'world';
+
+const BASE_TRAVEL_HOURS: Record<string, number> = {
+  Mumbai: 20.5,
+  Shanghai: 4.6,
+  'Hong Kong': 13.7,
+  Singapore: 2.1,
+  Sydney: 23.9,
+  Dubai: 11.4,
+  Tokyo: 6.2,
+  London: 17.3
 };
 
-type ActiveTab = 'info' | 'world';
-
-type FeatureCard = {
-  id: string;
-  label: string;
-  title: string;
-  description: string;
-  meta?: string;
-  cta?: string;
-};
-
-const tabOptions: { id: ActiveTab; label: string }[] = [
-  { id: 'info', label: 'Info board' },
-  { id: 'world', label: 'World view' }
-];
-
-const sampleBackendSummary: BackendEventSummary = {
-  event_location: 'New York',
-  event_dates: {
-    start: '2025-12-10T09:30:00Z',
-    end: '2025-12-11T13:20:00Z'
-  },
-  event_span: {
-    start: '2025-12-09T17:30:00Z',
-    end: '2025-12-11T22:27:00Z'
-  },
-  total_co2: 125,
-  average_travel_hours: 10.9,
-  median_travel_hours: 5.7,
-  max_travel_hours: 26.3,
-  min_travel_hours: 0.5,
-  attendee_travel_hours: {
-    Mumbai: 20.5,
-    Shanghai: 4.6,
-    'Hong Kong': 13.7,
-    Singapore: 2.1,
-    Sydney: 23.9
-  }
-};
+const MIN_DURATION_HOURS = 1;
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
@@ -69,16 +29,212 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZoneName: 'short'
 });
 
-const clockFormatter = new Intl.DateTimeFormat('en-GB', {
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: true,
-  timeZone: 'UTC'
-});
-
 const meetingCoordinateDirectory: Record<string, [number, number]> = {
-  'New York': [-74.006, 40.7128]
+  ...cityCoordinates,
+  'New York': [-74.006, 40.7128],
+  London: [-0.1276, 51.5072],
+  Dubai: [55.2708, 25.2048],
+  Tokyo: [139.6917, 35.6895],
+  Bangkok: [100.5018, 13.7563]
 };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function parseScenarioInput(raw: string): AttendeeScenario {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error('Unable to parse JSON. Please check the syntax and try again.');
+  }
+
+  if (typeof parsed !== 'object' || !parsed) {
+    throw new Error('Scenario must be a JSON object.');
+  }
+
+  const { attendees, availability_window: availabilityWindow, event_duration: eventDuration } =
+    parsed as {
+      attendees?: Record<string, unknown>;
+      availability_window?: { start?: unknown; end?: unknown };
+      event_duration?: { days?: unknown; hours?: unknown };
+    };
+
+  if (!attendees || typeof attendees !== 'object') {
+    throw new Error('Provide an "attendees" object with city names and attendee counts.');
+  }
+
+  const normalisedAttendees: Record<string, number> = {};
+  for (const [city, value] of Object.entries(attendees)) {
+    const trimmedCity = city.trim();
+    const numericValue = Number(value);
+
+    if (!trimmedCity) {
+      throw new Error('Each attendee entry must have a city name.');
+    }
+
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      throw new Error(`Attendee count for "${trimmedCity}" must be a positive number.`);
+    }
+
+    normalisedAttendees[trimmedCity] = Math.round(numericValue);
+  }
+
+  if (!availabilityWindow || typeof availabilityWindow !== 'object') {
+    throw new Error('Provide an "availability_window" with "start" and "end" timestamps.');
+  }
+
+  const availabilityStart = String(availabilityWindow.start ?? '').trim();
+  const availabilityEnd = String(availabilityWindow.end ?? '').trim();
+
+  if (!availabilityStart || !availabilityEnd) {
+    throw new Error('Availability window must include both "start" and "end" timestamps.');
+  }
+
+  if (!eventDuration || typeof eventDuration !== 'object') {
+    throw new Error('Provide an "event_duration" with "days" and "hours".');
+  }
+
+  const durationDays = Number(eventDuration.days ?? 0);
+  const durationHours = Number(eventDuration.hours ?? 0);
+
+  if (Number.isNaN(durationDays) || durationDays < 0 || Number.isNaN(durationHours) || durationHours < 0) {
+    throw new Error('Event duration must include non-negative "days" and "hours" values.');
+  }
+
+  if (Object.keys(normalisedAttendees).length === 0) {
+    throw new Error('List at least one attendee city to run the optimisation.');
+  }
+
+  return {
+    attendees: normalisedAttendees,
+    availability_window: {
+      start: availabilityStart,
+      end: availabilityEnd
+    },
+    event_duration: {
+      days: durationDays,
+      hours: durationHours
+    }
+  };
+}
+
+function deriveTravelHours(scenario: AttendeeScenario) {
+  return Object.keys(scenario.attendees).reduce<Record<string, number>>((acc, city, index) => {
+    const base = BASE_TRAVEL_HOURS[city] ?? 7 + index * 1.8;
+    acc[city] = Number(base.toFixed(1));
+    return acc;
+  }, {});
+}
+
+function expandTravelTimes(travelHours: Record<string, number>, scenario: AttendeeScenario) {
+  const expanded: number[] = [];
+
+  Object.entries(travelHours).forEach(([city, hours]) => {
+    const travellers = scenario.attendees[city] ?? 1;
+    for (let i = 0; i < travellers; i += 1) {
+      expanded.push(hours);
+    }
+  });
+
+  if (expanded.length === 0) {
+    expanded.push(0);
+  }
+
+  return expanded.sort((a, b) => a - b);
+}
+
+function calculateMedian(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const mid = Math.floor(values.length / 2);
+
+  if (values.length % 2 === 0) {
+    return (values[mid - 1] + values[mid]) / 2;
+  }
+
+  return values[mid];
+}
+
+function deriveEventDates(scenario: AttendeeScenario) {
+  const availabilityStart = new Date(scenario.availability_window.start);
+  const availabilityEnd = new Date(scenario.availability_window.end);
+
+  const totalDurationHours =
+    scenario.event_duration.days * 24 + scenario.event_duration.hours || MIN_DURATION_HOURS;
+
+  if (Number.isNaN(availabilityStart.getTime())) {
+    return {
+      start: scenario.availability_window.start,
+      end: scenario.availability_window.end
+    };
+  }
+
+  const tentativeEnd = new Date(availabilityStart.getTime() + totalDurationHours * 60 * 60 * 1000);
+
+  if (!Number.isNaN(availabilityEnd.getTime()) && tentativeEnd > availabilityEnd) {
+    return {
+      start: availabilityStart.toISOString(),
+      end: availabilityEnd.toISOString()
+    };
+  }
+
+  return {
+    start: availabilityStart.toISOString(),
+    end: tentativeEnd.toISOString()
+  };
+}
+
+function chooseMeetingHub(travelHours: Record<string, number>) {
+  const [bestCity] =
+    Object.entries(travelHours)
+      .sort(([, hoursA], [, hoursB]) => hoursA - hoursB)
+      .at(0) ?? [];
+
+  return bestCity ?? 'Singapore';
+}
+
+async function mockOptimiseScenario(scenario: AttendeeScenario): Promise<EventSummary> {
+  await sleep(1200);
+
+  const travelHours = deriveTravelHours(scenario);
+  const expandedTimes = expandTravelTimes(travelHours, scenario);
+
+  const totalTravellers = Object.values(scenario.attendees).reduce((sum, count) => sum + count, 0) || 1;
+  const weightedTravelHours = Object.entries(travelHours).reduce((sum, [city, hours]) => {
+    const travellers = scenario.attendees[city] ?? 1;
+    return sum + hours * travellers;
+  }, 0);
+
+  const average = weightedTravelHours / totalTravellers;
+  const median = calculateMedian(expandedTimes);
+  const max = Math.max(...expandedTimes);
+  const min = Math.min(...expandedTimes);
+
+  const totalCo2 = Math.round(weightedTravelHours * 2.2);
+  const plannedDates = deriveEventDates(scenario);
+  const meetingHub = chooseMeetingHub(travelHours);
+
+  return {
+    event_location: meetingHub,
+    event_dates: plannedDates,
+    event_span: {
+      start: scenario.availability_window.start,
+      end: scenario.availability_window.end
+    },
+    total_co2: totalCo2,
+    average_travel_hours: Number(average.toFixed(2)),
+    median_travel_hours: Number(median.toFixed(2)),
+    max_travel_hours: Number(max.toFixed(2)),
+    min_travel_hours: Number(min.toFixed(2)),
+    attendee_travel_hours: travelHours
+  };
+}
 
 function formatDateRange(range: { start: string; end: string }) {
   const start = new Date(range.start);
@@ -120,34 +276,12 @@ function formatCo2(totalCo2: number) {
     return 'n/a';
   }
 
-  return `${totalCo2.toLocaleString('en-GB')} tCO2e`;
+  return `${totalCo2.toLocaleString('en-GB')} tCO₂e`;
 }
 
-function buildScenario(summary: BackendEventSummary): AttendeeScenario {
-  const attendees: Record<string, number> = {};
-
-  Object.keys(summary.attendee_travel_hours).forEach((city) => {
-    attendees[city] = 1;
-  });
-
-  return {
-    attendees,
-    availability_window: {
-      start: summary.event_span.start,
-      end: summary.event_span.end
-    },
-    event_duration: {
-      days: 0,
-      hours: 0
-    }
-  };
-}
-
-function deriveMeetingLocation(summary: BackendEventSummary): CityTravelPlan {
+function deriveMeetingLocation(summary: EventSummary): CityTravelPlan {
   const coordinates =
-    meetingCoordinateDirectory[summary.event_location] ?? [
-      -0.1276, 51.5072
-    ];
+    meetingCoordinateDirectory[summary.event_location] ?? meetingCoordinateDirectory.London;
 
   if (!meetingCoordinateDirectory[summary.event_location]) {
     console.warn(
@@ -163,255 +297,367 @@ function deriveMeetingLocation(summary: BackendEventSummary): CityTravelPlan {
 }
 
 export default function App() {
-  const eventSummary = sampleBackendSummary;
+  const [view, setView] = useState<ViewState>('onboarding');
+  const [scenarioInput, setScenarioInput] = useState(() => JSON.stringify(sampleScenario, null, 2));
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [optimiserError, setOptimiserError] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<AttendeeScenario | null>(null);
+  const [eventSummary, setEventSummary] = useState<EventSummary | null>(null);
+  const [executiveBrief, setExecutiveBrief] = useState('');
+  const [hasRequestedBrief, setHasRequestedBrief] = useState(false);
+  const [briefModel, setBriefModel] = useState<string | null>(null);
+  const [isFetchingBrief, setIsFetchingBrief] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const activeBriefRequest = useRef<AbortController | null>(null);
 
-  const nowUtc = clockFormatter.format(new Date());
-  const meetingLocation = deriveMeetingLocation(eventSummary);
-  const scenario = buildScenario(eventSummary);
+  useEffect(() => {
+    return () => {
+      activeBriefRequest.current?.abort();
+    };
+  }, []);
 
-  const travelHoursByCity = Object.entries(eventSummary.attendee_travel_hours).sort(
-    ([, hoursA], [, hoursB]) => hoursB - hoursA
+  const generateBrief = useCallback(async (summary: EventSummary) => {
+    activeBriefRequest.current?.abort();
+
+    const controller = new AbortController();
+    activeBriefRequest.current = controller;
+
+    setIsFetchingBrief(true);
+    setBriefError(null);
+    setBriefModel(null);
+    setExecutiveBrief('');
+    setHasRequestedBrief(true);
+
+    try {
+      const result = await streamMeetingPlan(summary, {
+        signal: controller.signal,
+        onToken: (token) => {
+          setExecutiveBrief((prev) => prev + token);
+        }
+      });
+
+      setExecutiveBrief(result.content);
+      setBriefModel(result.model);
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        setBriefError(
+          error instanceof Error ? error.message : 'Failed to generate the meeting brief.'
+        );
+        setExecutiveBrief('');
+      }
+    } finally {
+      if (activeBriefRequest.current === controller) {
+        activeBriefRequest.current = null;
+      }
+      setIsFetchingBrief(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'analysis' && eventSummary && !hasRequestedBrief) {
+      generateBrief(eventSummary);
+    }
+  }, [view, eventSummary, hasRequestedBrief, generateBrief]);
+
+  const runOptimisation = useCallback(async (nextScenario: AttendeeScenario) => {
+    setScenario(nextScenario);
+    setView('optimising');
+    setOptimiserError(null);
+    setEventSummary(null);
+    setExecutiveBrief('');
+    setBriefModel(null);
+    setBriefError(null);
+    setHasRequestedBrief(false);
+    setIsFetchingBrief(false);
+    activeBriefRequest.current?.abort();
+    activeBriefRequest.current = null;
+
+    try {
+      const summary = await mockOptimiseScenario(nextScenario);
+      setEventSummary(summary);
+      setView('analysis');
+    } catch (error) {
+      console.error('Optimisation failed', error);
+      setOptimiserError('We could not run the optimiser. Please adjust the scenario and try again.');
+      setView('onboarding');
+    }
+  }, []);
+
+  const handleScenarioSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setScenarioError(null);
+    setOptimiserError(null);
+
+    try {
+      const parsedScenario = parseScenarioInput(scenarioInput);
+      setScenarioInput(JSON.stringify(parsedScenario, null, 2));
+      void runOptimisation(parsedScenario);
+    } catch (error) {
+      setScenarioError(error instanceof Error ? error.message : 'Invalid scenario input.');
+    }
+  };
+
+  const handleResetToOnboarding = () => {
+    activeBriefRequest.current?.abort();
+    setScenarioInput(JSON.stringify(scenario ?? sampleScenario, null, 2));
+    setScenario(null);
+    setEventSummary(null);
+    setExecutiveBrief('');
+    setBriefModel(null);
+    setBriefError(null);
+    setHasRequestedBrief(false);
+    setIsFetchingBrief(false);
+    setView('onboarding');
+  };
+
+  const travelStats = useMemo(() => {
+    if (!eventSummary) {
+      return [];
+    }
+
+    return [
+      {
+        label: 'Average travel time',
+        value: formatHours(eventSummary.average_travel_hours)
+      },
+      {
+        label: 'Median travel time',
+        value: formatHours(eventSummary.median_travel_hours)
+      },
+      {
+        label: 'Longest journey',
+        value: formatHours(eventSummary.max_travel_hours)
+      },
+      {
+        label: 'Shortest journey',
+        value: formatHours(eventSummary.min_travel_hours)
+      }
+    ];
+  }, [eventSummary]);
+
+  const travelHoursByCity = useMemo(
+    () =>
+      eventSummary
+        ? Object.entries(eventSummary.attendee_travel_hours).sort(([, a], [, b]) => b - a)
+        : [],
+    [eventSummary]
   );
 
-  const travelStats = [
-    {
-      label: 'Average travel time',
-      value: formatHours(eventSummary.average_travel_hours)
-    },
-    {
-      label: 'Median travel time',
-      value: formatHours(eventSummary.median_travel_hours)
-    },
-    {
-      label: 'Longest journey',
-      value: formatHours(eventSummary.max_travel_hours)
-    },
-    {
-      label: 'Shortest journey',
-      value: formatHours(eventSummary.min_travel_hours)
-    }
-  ];
+  const totalAttendees = useMemo(
+    () => (scenario ? Object.values(scenario.attendees).reduce((sum, count) => sum + count, 0) : 0),
+    [scenario]
+  );
 
-  const longestRoute = travelHoursByCity[0];
+  const meetingLocation = useMemo(
+    () => (eventSummary ? deriveMeetingLocation(eventSummary) : null),
+    [eventSummary]
+  );
 
-  const featureCards: FeatureCard[] = [
-    {
-      id: 'hub',
-      label: 'Meeting hub',
-      title: meetingLocation.city,
-      meta: formatDateRange(eventSummary.event_dates),
-      description: `${travelHoursByCity.length} global offices align to this schedule.`,
-      cta: 'Simulate the journey'
-    },
-    {
-      id: 'longest',
-      label: `Longest journey${longestRoute ? ` — ${longestRoute[0]}` : ''}`,
-      title: longestRoute ? formatHours(longestRoute[1]) : 'n/a',
-      description: 'Time on the move from our farthest office.',
-      meta: 'Route animation traces live connectivity.'
-    },
-    {
-      id: 'footprint',
-      label: 'Total CO₂e',
-      title: formatCo2(eventSummary.total_co2),
-      description: 'Aggregate footprint across the traveller mix.',
-      meta: `Median leg ${formatHours(eventSummary.median_travel_hours)}`
-    }
-  ];
-
-  const heroCard = featureCards[0];
-  const secondaryCards = featureCards.slice(1);
-  const filterLabels = ['City', 'Metric', 'Window', 'CO₂ profile'];
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>('info');
-  const [showFullMap, setShowFullMap] = useState(false);
-
-  const handleSimulateJourney = () => setShowFullMap(true);
-  const handleCloseSimulation = () => setShowFullMap(false);
+  const analysisBriefFallback =
+    executiveBrief ||
+    (briefError
+      ? '_Unable to produce a briefing. Please try again shortly._'
+      : isFetchingBrief
+        ? '_Compiling insights…_'
+        : '_No briefing generated._');
 
   return (
     <div className="app">
-      <header className="top-nav">
-        <div className="top-nav__brand">
-          <span className="top-nav__glyph">≡</span>
-          <span className="top-nav__logo">qrt</span>
-        </div>
-        <nav className="top-nav__links">
-          {['Archive', 'Schedule', 'Teams', 'Projects', 'Support', 'About'].map((entry) => (
-            <a key={entry} href="#" className="top-nav__link">
-              {entry}
-            </a>
-          ))}
-        </nav>
-        <div className="top-nav__clock">
-          <span>UTC</span>
-          <strong>{nowUtc}</strong>
-        </div>
-      </header>
-
-      <div className="sub-nav">
-        <span className="sub-nav__tag">meeting in the middle</span>
-        <span className="sub-nav__title">Global session storyboard</span>
-        <button className="sub-nav__cta" type="button" onClick={handleSimulateJourney}>
-          Simulate the journey
-        </button>
-      </div>
-
-      <main className="page">
-        <section className="tab-bar">
-          {tabOptions.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`tab-button${activeTab === tab.id ? ' tab-button--active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </section>
-
-        {activeTab === 'info' && (
-          <>
-            <section className="feature-deck">
-              <article className="feature-card feature-card--hero">
-                <span className="feature-card__tag">{heroCard.label}</span>
-                <h2 className="feature-card__title">{heroCard.title}</h2>
-                {heroCard.meta ? <p className="feature-card__meta">{heroCard.meta}</p> : null}
-                <p className="feature-card__description">{heroCard.description}</p>
-                {heroCard.cta ? (
-                  <button
-                    className="feature-card__cta"
-                    type="button"
-                    onClick={handleSimulateJourney}
-                  >
-                    {heroCard.cta}
-                  </button>
-                ) : null}
-              </article>
-
-              <div className="feature-card-list">
-                {secondaryCards.map((card) => (
-                  <article className="feature-card feature-card--compact" key={card.id}>
-                    <span className="feature-card__tag">{card.label}</span>
-                    <h3 className="feature-card__title">{card.title}</h3>
-                    <p className="feature-card__description">{card.description}</p>
-                    {card.meta ? <p className="feature-card__meta">{card.meta}</p> : null}
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="filter-row">
-              {filterLabels.map((label) => (
-                <button className="filter-pill" type="button" key={label}>
-                  <span>{label}</span>
-                  <span className="filter-pill__icon">⌄</span>
-                </button>
-              ))}
-            </section>
-
-            <section className="info-panels">
-              <article className="info-card">
-                <header>
-                  <span className="info-card__kicker">Travel benchmarks</span>
-                  <h3 className="info-card__title">Journey analytics</h3>
-                </header>
-                <ul className="info-card__list">
-                  {travelStats.map((stat) => (
-                    <li key={stat.label}>
-                      <span>{stat.label}</span>
-                      <strong>{stat.value}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="info-card">
-                <header>
-                  <span className="info-card__kicker">Window</span>
-                  <h3 className="info-card__title">Availability span</h3>
-                </header>
-                <p className="info-card__copy">{formatDateRange(eventSummary.event_span)}</p>
-                <p className="info-card__copy info-card__copy--muted">
-                  Sync with local leads to confirm corridor readiness ahead of the session.
-                </p>
-              </article>
-            </section>
-          </>
-        )}
-
-        {activeTab === 'world' && (
-          <section className="world-layout">
-            <div className="world-summary">
-              <span className="world-summary__tag">Global roster</span>
-              <h3 className="world-summary__title">World view</h3>
-              <p className="world-summary__copy">
-                Scan the cities contributing to this session and spot the journeys demanding the
-                highest coordination effort.
+      {view === 'onboarding' && (
+        <div className="onboarding-screen">
+          <div className="onboarding-card">
+            <header className="onboarding-card__header">
+              <span className="onboarding-card__tag">meeting in the middle</span>
+              <h1>Welcome to Meeting in the Middle</h1>
+              <p>
+                Paste or adapt the attendee scenario to begin. We&apos;ll compute the fairest hub and
+                hand the mic to our AI strategist for the executive playback.
               </p>
-              <ul className="world-summary__metrics">
-                {travelStats.map((stat) => (
-                  <li key={stat.label}>
-                    <span>{stat.label}</span>
-                    <strong>{stat.value}</strong>
-                  </li>
-                ))}
-              </ul>
-              <button
-                className="world-summary__cta"
-                type="button"
-                onClick={handleSimulateJourney}
-              >
-                Simulate the journey
-              </button>
-            </div>
+            </header>
 
-            <div className="world-city-grid">
-              <header className="section-header">
-                <h4>Departure offices</h4>
-                <span>{travelHoursByCity.length} cities tracked</span>
-              </header>
-              <div className="city-grid__content">
-                {travelHoursByCity.map(([city, hours], index) => (
-                  <article className="city-card" key={city}>
-                    <span className="city-card__index">{String(index + 1).padStart(2, '0')}</span>
-                    <div className="city-card__meta">
-                      <span className="city-card__city">{city}</span>
-                      <span className="city-card__time">{formatHours(hours)}</span>
-                    </div>
-                    <span className="city-card__tag">
-                      {hours > eventSummary.average_travel_hours ? 'Long haul' : 'Quick hop'}
-                    </span>
-                  </article>
-                ))}
+            <form className="scenario-form" onSubmit={handleScenarioSubmit}>
+              <label htmlFor="scenario-input">Attendee scenario JSON</label>
+              <textarea
+                id="scenario-input"
+                className="scenario-form__textarea"
+                value={scenarioInput}
+                onChange={(event) => setScenarioInput(event.target.value)}
+                spellCheck={false}
+                rows={16}
+              />
+              <div className="scenario-form__footer">
+                <div className="scenario-form__messages">
+                  {scenarioError ? <p className="form-error">{scenarioError}</p> : null}
+                  {optimiserError ? <p className="form-error">{optimiserError}</p> : null}
+                </div>
+                <button className="primary-button primary-button--large" type="submit">
+                  Run optimisation
+                </button>
               </div>
-            </div>
-          </section>
-        )}
-      </main>
-
-      {showFullMap && (
-        <div className="map-screen" role="dialog" aria-modal="true">
-          <div className="map-screen__header">
-            <button className="map-screen__button" type="button" onClick={handleCloseSimulation}>
-              ← Back to board
-            </button>
-            <span>Route animation playback</span>
-          </div>
-          <div className="map-screen__map">
-            <TravelMap
-              key="full-map"
-              scenario={scenario}
-              meetingLocation={meetingLocation}
-            />
-            <div className="map-screen__legend">
-              <strong>How to read this view</strong>
-              <p>Red arcs accelerate in to highlight the proposed travel corridors.</p>
-            </div>
+            </form>
           </div>
         </div>
       )}
+
+      {view === 'optimising' && (
+        <div className="loading-screen">
+          <div className="loading-card">
+            <span className="loading-card__tag">Optimising</span>
+            <h2>The optimiser is finding the best route</h2>
+            <div className="loading-card__spinner" aria-hidden="true" />
+            <p>Hold tight—this takes just a moment.</p>
+          </div>
+        </div>
+      )}
+
+      {view === 'analysis' && eventSummary && scenario && meetingLocation ? (
+        <div className="analysis-screen">
+          <header className="analysis-hero">
+            <div className="analysis-hero__info">
+              <span className="analysis-hero__tag">Optimised outcome</span>
+              <h1>{eventSummary.event_location}</h1>
+              <p className="analysis-hero__headline">{formatDateRange(eventSummary.event_dates)}</p>
+              <p className="analysis-hero__detail">
+                Availability window: {formatDateRange(eventSummary.event_span)}
+              </p>
+              <p className="analysis-hero__detail">
+                {totalAttendees} attendees across {Object.keys(scenario.attendees).length} cities
+              </p>
+            </div>
+
+            <div className="analysis-hero__metrics">
+              <div className="analysis-stat">
+                <span>Total CO₂e</span>
+                <strong>{formatCo2(eventSummary.total_co2)}</strong>
+              </div>
+              {travelStats.map((stat) => (
+                <div key={stat.label} className="analysis-stat">
+                  <span>{stat.label}</span>
+                  <strong>{stat.value}</strong>
+                </div>
+              ))}
+            </div>
+          </header>
+
+          <main className="analysis-main">
+            <section className="analysis-brief-card">
+              <header className="analysis-brief-card__header">
+                <span className="analysis-brief-card__tag">Executive briefing</span>
+                {briefModel ? (
+                  <span className="analysis-brief-card__model">{briefModel}</span>
+                ) : null}
+              </header>
+              <div className="analysis-brief-card__body">
+                <ReactMarkdown>{analysisBriefFallback}</ReactMarkdown>
+              </div>
+              {briefError ? (
+                <p className="analysis-brief-card__error">{briefError}</p>
+              ) : null}
+            </section>
+
+            <aside className="analysis-sidebar">
+              <div className="analysis-side-card">
+                <h3>Travel spread</h3>
+                <ul className="analysis-travel-list">
+                  {travelHoursByCity.map(([city, hours]) => (
+                    <li key={city}>
+                      <span>{city}</span>
+                      <strong>{formatHours(hours)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="analysis-side-card">
+                <h3>Meeting notes</h3>
+                <ul className="analysis-note-list">
+                  <li>
+                    <span>Primary window</span>
+                    <strong>{formatDateRange(eventSummary.event_dates)}</strong>
+                  </li>
+                  <li>
+                    <span>Availability buffer</span>
+                    <strong>{formatDateRange(eventSummary.event_span)}</strong>
+                  </li>
+                  <li>
+                    <span>Total attendees</span>
+                    <strong>{totalAttendees}</strong>
+                  </li>
+                </ul>
+              </div>
+            </aside>
+          </main>
+
+          <footer className="analysis-actions">
+            <button
+              className="primary-button primary-button--huge"
+              type="button"
+              onClick={() => setView('world')}
+            >
+              Simulate the journey
+            </button>
+            <button className="ghost-button" type="button" onClick={handleResetToOnboarding}>
+              Start a new plan
+            </button>
+          </footer>
+        </div>
+      ) : null}
+
+      {view === 'world' && scenario && eventSummary && meetingLocation ? (
+        <div className="world-screen">
+          <header className="world-header">
+            <button className="ghost-button" type="button" onClick={() => setView('analysis')}>
+              ← Back to analysis
+            </button>
+            <div className="world-header__titles">
+              <span className="world-header__tag">Journey simulation</span>
+              <h1>{eventSummary.event_location}</h1>
+              <p>{formatDateRange(eventSummary.event_dates)}</p>
+            </div>
+          </header>
+
+          <div className="world-map-card">
+            <TravelMap scenario={scenario} meetingLocation={meetingLocation} />
+            <div className="world-map-card__legend">
+              <strong>How to read this view</strong>
+              <p>Routes animate towards the proposed hub. Line weight mirrors traveller volume.</p>
+            </div>
+          </div>
+
+          <section className="world-metrics">
+            <article className="world-metric">
+              <span>Total CO₂e</span>
+              <strong>{formatCo2(eventSummary.total_co2)}</strong>
+            </article>
+            {travelStats.map((stat) => (
+              <article key={stat.label} className="world-metric">
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+              </article>
+            ))}
+          </section>
+
+          <section className="world-city-grid">
+            <header className="section-header">
+              <h4>Departure offices</h4>
+              <span>{travelHoursByCity.length} cities tracked</span>
+            </header>
+            <div className="city-grid__content">
+              {travelHoursByCity.map(([city, hours], index) => (
+                <article className="city-card" key={city}>
+                  <span className="city-card__index">{String(index + 1).padStart(2, '0')}</span>
+                  <div className="city-card__meta">
+                    <span className="city-card__city">{city}</span>
+                    <span className="city-card__time">{formatHours(hours)}</span>
+                  </div>
+                  <span className="city-card__tag">
+                    {hours > eventSummary.average_travel_hours ? 'Long haul' : 'Quick hop'}
+                  </span>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
