@@ -1,9 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TravelMap from './components/TravelMap';
-import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult } from './types';
+import { AttendeeScenario, CityTravelPlan, EventSummary, OptimizationResult, FlightPrice } from './types';
 import { sampleScenario, cityCoordinates } from './data/sampleScenario';
 import { streamMeetingPlan } from './api/openRouterClient';
+import { getFlightPrices } from './api/getPrices';
+import { getCityNameFromAirportCode } from './data/airportCodes';
 
 type ViewState = 'onboarding' | 'optimising' | 'analysis' | 'world';
 
@@ -35,7 +37,10 @@ const meetingCoordinateDirectory: Record<string, [number, number]> = {
   London: [-0.1276, 51.5072],
   Dubai: [55.2708, 25.2048],
   Tokyo: [139.6917, 35.6895],
-  Bangkok: [100.5018, 13.7563]
+  Bangkok: [100.5018, 13.7563],
+  'Ho Chi Minh City': [106.6297, 10.8231],
+  Hanoi: [105.8342, 21.0285],
+  'Kuala Lumpur': [101.6869, 3.1390]
 };
 
 function sleep(ms: number) {
@@ -218,45 +223,124 @@ function convertToEventSummary(result: OptimizationResult): EventSummary {
 async function mockOptimiseScenario(scenario: AttendeeScenario): Promise<OptimizationResult[]> {
   await sleep(1200);
 
-  const travelHours = deriveTravelHours(scenario);
-  const expandedTimes = expandTravelTimes(travelHours, scenario);
-
-  const totalTravellers = Object.values(scenario.attendees).reduce((sum, count) => sum + count, 0) || 1;
-  const weightedTravelHours = Object.entries(travelHours).reduce((sum, [city, hours]) => {
-    const travellers = scenario.attendees[city] ?? 1;
-    return sum + hours * travellers;
-  }, 0);
-
-  const average = weightedTravelHours / totalTravellers;
-  const median = calculateMedian(expandedTimes);
-  const max = Math.max(...expandedTimes);
-  const min = Math.min(...expandedTimes);
-
-  const totalCo2 = Math.round(weightedTravelHours * 2.2);
-  const plannedDates = deriveEventDates(scenario);
-  const meetingHub = chooseMeetingHub(travelHours);
-  const totalSpanHours = (new Date(scenario.availability_window.end).getTime() - new Date(scenario.availability_window.start).getTime()) / (1000 * 60 * 60);
-
-  // Return array with single mock result (can be expanded to return multiple ranked results)
+  // Return the exact test data provided
   return [
     {
       rank: 1,
-      event_location: meetingHub,
-      phase_1_score: 5.5,
-      event_dates: plannedDates,
-      event_span: {
-        start: scenario.availability_window.start,
-        end: scenario.availability_window.end,
-        total_hours: totalSpanHours
+      event_location: "SGN",
+      phase_1_score: 5.88,
+      event_dates: {
+        start: "2025-05-06T01:20:00+00:00",
+        end: "2025-05-06T05:20:00+00:00"
       },
-      total_co2_tonnes: totalCo2,
-      average_co2_per_person_tonnes: Number((totalCo2 / totalTravellers).toFixed(2)),
-      average_travel_hours: Number(average.toFixed(2)),
-      median_travel_hours: Number(median.toFixed(2)),
-      max_travel_hours: Number(max.toFixed(2)),
-      min_travel_hours: Number(min.toFixed(2)),
-      attendee_travel_hours: travelHours,
-      itinerary: [] // Empty itinerary for mock - will be populated by real API
+      event_span: {
+        start: "2025-05-01T10:15:00+00:00",
+        end: "2025-05-06T15:40:00+00:00",
+        total_hours: 125.42
+      },
+      total_co2_tonnes: 4.02,
+      average_co2_per_person_tonnes: 0.4,
+      average_travel_hours: 12.03,
+      median_travel_hours: 8.5,
+      max_travel_hours: 22.17,
+      min_travel_hours: 4.25,
+      attendee_travel_hours: {
+        "Singapore": 4.25,
+        "Hong Kong": 5.33,
+        "Mumbai": 18.33,
+        "Sydney": 22.17,
+        "Shanghai": 8.5
+      },
+      itinerary: [
+        ["BOM", "SGN", "TG", 352, "2025-05-02T21:10:00+00:00", 2, "out", "1-Stop"],
+        ["SGN", "BOM", "VN", 607, "2025-05-04T09:55:00+00:00", 2, "in", "1-Stop"],
+        ["PVG", "SGN", "VN", 525, "2025-05-01T07:10:00+00:00", 3, "out", "Direct"],
+        ["SGN", "PVG", "VN", 524, "2025-05-02T00:30:00+00:00", 3, "in", "Direct"],
+        ["HKG", "SGN", "VN", 595, "2025-05-01T10:45:00+00:00", 1, "out", "Direct"],
+        ["SGN", "HKG", "VN", 594, "2025-05-02T06:45:00+00:00", 1, "in", "Direct"],
+        ["SIN", "SGN", "TR", 302, "2025-05-01T08:00:00+00:00", 2, "out", "Direct"],
+        ["SGN", "SIN", "TR", 323, "2025-05-02T08:35:00+00:00", 2, "in", "Direct"],
+        ["SYD", "SGN", "TR", 13, "2025-05-05T10:45:00+00:00", 2, "out", "1-Stop"],
+        ["SGN", "SYD", "JQ", 62, "2025-05-06T15:40:00+00:00", 2, "in", "Direct"]
+      ]
+    },
+    {
+      rank: 2,
+      event_location: "HAN",
+      phase_1_score: 6.19,
+      event_dates: {
+        start: "2025-05-06T18:05:00+00:00",
+        end: "2025-05-06T22:05:00+00:00"
+      },
+      event_span: {
+        start: "2025-05-01T08:35:00+00:00",
+        end: "2025-05-07T13:10:00+00:00",
+        total_hours: 148.58
+      },
+      total_co2_tonnes: 4.09,
+      average_co2_per_person_tonnes: 0.41,
+      average_travel_hours: 13.93,
+      median_travel_hours: 11.62,
+      max_travel_hours: 30.92,
+      min_travel_hours: 4.08,
+      attendee_travel_hours: {
+        "Shanghai": 13.25,
+        "Sydney": 30.92,
+        "Hong Kong": 4.08,
+        "Singapore": 6.83,
+        "Mumbai": 10.0
+      },
+      itinerary: [
+        ["BOM", "HAN", "VJ", 910, "2025-05-02T19:10:00+00:00", 2, "out", "Direct"],
+        ["HAN", "BOM", "VJ", 907, "2025-05-07T13:10:00+00:00", 2, "in", "Direct"],
+        ["SHA", "HAN", "MU", 5309, "2025-05-02T02:00:00+00:00", 3, "out", "1-Stop"],
+        ["HAN", "PVG", "MF", 870, "2025-05-07T08:40:00+00:00", 3, "in", "1-Stop"],
+        ["HKG", "HAN", "VN", 593, "2025-05-01T06:30:00+00:00", 1, "out", "Direct"],
+        ["HAN", "HKG", "VN", 592, "2025-05-02T03:30:00+00:00", 1, "in", "Direct"],
+        ["SIN", "HAN", "VN", 660, "2025-05-01T05:05:00+00:00", 2, "out", "Direct"],
+        ["HAN", "SIN", "VN", 661, "2025-05-02T00:35:00+00:00", 2, "in", "Direct"],
+        ["SYD", "HAN", "JQ", 61, "2025-05-06T05:10:00+00:00", 2, "out", "1-Stop"],
+        ["HAN", "SYD", "VN", 661, "2025-05-07T00:35:00+00:00", 2, "in", "1-Stop"]
+      ]
+    },
+    {
+      rank: 3,
+      event_location: "KUL",
+      phase_1_score: 6.48,
+      event_dates: {
+        start: "2025-05-05T13:55:00+00:00",
+        end: "2025-05-05T17:55:00+00:00"
+      },
+      event_span: {
+        start: "2025-05-01T10:25:00+00:00",
+        end: "2025-05-07T11:15:00+00:00",
+        total_hours: 144.83
+      },
+      total_co2_tonnes: 4.39,
+      average_co2_per_person_tonnes: 0.44,
+      average_travel_hours: 17.57,
+      median_travel_hours: 20.42,
+      max_travel_hours: 27.08,
+      min_travel_hours: 2.42,
+      attendee_travel_hours: {
+        "Hong Kong": 13.92,
+        "Singapore": 2.42,
+        "Shanghai": 20.42,
+        "Sydney": 27.08,
+        "Mumbai": 20.75
+      },
+      itinerary: [
+        ["BOM", "KUL", "TG", 352, "2025-05-02T21:10:00+00:00", 2, "out", "1-Stop"],
+        ["KUL", "BOM", "8D", 722, "2025-05-05T08:30:00+00:00", 2, "in", "1-Stop"],
+        ["PVG", "KUL", "CZ", 6077, "2025-05-01T00:45:00+00:00", 3, "out", "1-Stop"],
+        ["KUL", "PVG", "VJ", 826, "2025-05-03T05:35:00+00:00", 3, "in", "1-Stop"],
+        ["HKG", "KUL", "TR", 973, "2025-05-01T11:20:00+00:00", 1, "out", "1-Stop"],
+        ["KUL", "HKG", "MH", 78, "2025-05-02T11:50:00+00:00", 1, "in", "Direct"],
+        ["SIN", "KUL", "TR", 468, "2025-05-05T12:40:00+00:00", 2, "out", "Direct"],
+        ["KUL", "SIN", "TR", 469, "2025-05-07T11:15:00+00:00", 2, "in", "Direct"],
+        ["SYD", "KUL", "BA", 16, "2025-05-01T04:40:00+00:00", 2, "out", "1-Stop"],
+        ["KUL", "SYD", "TR", 469, "2025-05-05T14:55:00+00:00", 2, "in", "1-Stop"]
+      ]
     }
   ];
 }
@@ -304,18 +388,37 @@ function formatCo2(totalCo2: number) {
   return `${totalCo2.toLocaleString('en-GB')} tCO₂e`;
 }
 
-function deriveMeetingLocation(summary: EventSummary): CityTravelPlan {
-  const coordinates =
-    meetingCoordinateDirectory[summary.event_location] ?? meetingCoordinateDirectory.London;
+function formatPrice(priceUSD: number | undefined): string {
+  if (priceUSD === undefined || !Number.isFinite(priceUSD)) {
+    return '—';
+  }
 
-  if (!meetingCoordinateDirectory[summary.event_location]) {
+  return `$${priceUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function calculateTotalPrice(prices: FlightPrice[]): number {
+  return prices.reduce((total, flight) => {
+    if (flight.priceUSD !== undefined && Number.isFinite(flight.priceUSD)) {
+      return total + flight.priceUSD * flight.passengers;
+    }
+    return total;
+  }, 0);
+}
+
+function deriveMeetingLocation(summary: EventSummary): CityTravelPlan {
+  // Convert airport code to city name if needed
+  const cityName = getCityNameFromAirportCode(summary.event_location);
+  const coordinates =
+    meetingCoordinateDirectory[cityName] ?? meetingCoordinateDirectory[summary.event_location] ?? meetingCoordinateDirectory.London;
+
+  if (!meetingCoordinateDirectory[cityName] && !meetingCoordinateDirectory[summary.event_location]) {
     console.warn(
-      `Missing coordinates for ${summary.event_location}. Falling back to London coordinates.`
+      `Missing coordinates for ${summary.event_location} (${cityName}). Falling back to London coordinates.`
     );
   }
 
   return {
-    city: summary.event_location,
+    city: cityName,
     attendees: 0,
     coordinates
   };
@@ -329,12 +432,15 @@ export default function App() {
   const [scenario, setScenario] = useState<AttendeeScenario | null>(null);
   const [optimizationResults, setOptimizationResults] = useState<OptimizationResult[]>([]);
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
-  const [executiveBrief, setExecutiveBrief] = useState('');
-  const [hasRequestedBrief, setHasRequestedBrief] = useState(false);
-  const [briefModel, setBriefModel] = useState<string | null>(null);
-  const [isFetchingBrief, setIsFetchingBrief] = useState(false);
-  const [briefError, setBriefError] = useState<string | null>(null);
-  const activeBriefRequest = useRef<AbortController | null>(null);
+  const [executiveBriefs, setExecutiveBriefs] = useState<Map<number, string>>(new Map());
+  const [briefModels, setBriefModels] = useState<Map<number, string>>(new Map());
+  const [briefErrors, setBriefErrors] = useState<Map<number, string>>(new Map());
+  const [fetchingBriefRanks, setFetchingBriefRanks] = useState<Set<number>>(new Set());
+  const [flightPrices, setFlightPrices] = useState<Map<number, FlightPrice[]>>(new Map());
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const activeBriefRequests = useRef<Map<number, AbortController>>(new Map());
+  const activePriceRequests = useRef<Map<number, AbortController>>(new Map());
 
   // Get the currently selected result
   const selectedResult = optimizationResults[selectedResultIndex] ?? null;
@@ -342,52 +448,162 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      activeBriefRequest.current?.abort();
+      activeBriefRequests.current.forEach((controller) => controller.abort());
+      activePriceRequests.current.forEach((controller) => controller.abort());
     };
   }, []);
 
-  const generateBrief = useCallback(async (summary: EventSummary) => {
-    activeBriefRequest.current?.abort();
+  const generateBrief = useCallback(async (summary: EventSummary, rank: number) => {
+    // Cancel any existing request for this rank
+    activeBriefRequests.current.get(rank)?.abort();
 
     const controller = new AbortController();
-    activeBriefRequest.current = controller;
+    activeBriefRequests.current.set(rank, controller);
 
-    setIsFetchingBrief(true);
-    setBriefError(null);
-    setBriefModel(null);
-    setExecutiveBrief('');
-    setHasRequestedBrief(true);
+    setFetchingBriefRanks((prev) => new Set(prev).add(rank));
+    setBriefErrors((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(rank);
+      return newMap;
+    });
+    setBriefModels((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(rank);
+      return newMap;
+    });
+    setExecutiveBriefs((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(rank, '');
+      return newMap;
+    });
 
     try {
       const result = await streamMeetingPlan(summary, {
         signal: controller.signal,
         onToken: (token) => {
-          setExecutiveBrief((prev) => prev + token);
+          setExecutiveBriefs((prev) => {
+            const newMap = new Map(prev);
+            const current = newMap.get(rank) || '';
+            newMap.set(rank, current + token);
+            return newMap;
+          });
         }
       });
 
-      setExecutiveBrief(result.content);
-      setBriefModel(result.model);
+      setExecutiveBriefs((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(rank, result.content);
+        return newMap;
+      });
+      setBriefModels((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(rank, result.model);
+        return newMap;
+      });
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
-        setBriefError(
-          error instanceof Error ? error.message : 'Failed to generate the meeting brief.'
-        );
-        setExecutiveBrief('');
+        setBriefErrors((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(rank, error instanceof Error ? error.message : 'Failed to generate the meeting brief.');
+          return newMap;
+        });
+        setExecutiveBriefs((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(rank, '');
+          return newMap;
+        });
       }
     } finally {
-      if (activeBriefRequest.current === controller) {
-        activeBriefRequest.current = null;
+      if (activeBriefRequests.current.get(rank) === controller) {
+        activeBriefRequests.current.delete(rank);
       }
-      setIsFetchingBrief(false);
+      setFetchingBriefRanks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(rank);
+        return newSet;
+      });
     }
   }, []);
 
   useEffect(() => {
-    if (view === 'analysis' && eventSummary && !hasRequestedBrief) {
-      generateBrief(eventSummary);
+    if (view === 'analysis' && selectedResult && eventSummary) {
+      const rank = selectedResult.rank;
+      const hasBrief = executiveBriefs.has(rank);
+      const isFetching = fetchingBriefRanks.has(rank);
+      
+      // Only generate if we don't have a brief and aren't already fetching
+      if (!hasBrief && !isFetching) {
+        generateBrief(eventSummary, rank);
+      }
     }
-  }, [view, eventSummary, hasRequestedBrief, generateBrief]);
+  }, [view, selectedResult, eventSummary, executiveBriefs, fetchingBriefRanks, generateBrief]);
+
+  // Fetch prices for all optimization results
+  const fetchPricesForResults = useCallback(async (results: OptimizationResult[]) => {
+    console.log('🔄 fetchPricesForResults called with', results.length, 'results');
+    
+    // Cancel any existing price requests
+    activePriceRequests.current.forEach((controller) => controller.abort());
+    activePriceRequests.current.clear();
+
+    setIsFetchingPrices(true);
+    setPriceError(null);
+
+    // Fetch prices for each result
+    const pricePromises = results.map(async (result) => {
+      console.log(`📋 Rank ${result.rank}: ${result.itinerary.length} flights in itinerary`);
+      
+      if (result.itinerary.length === 0) {
+        console.log(`⏭️ Skipping rank ${result.rank} - no flights`);
+        return { rank: result.rank, prices: [] };
+      }
+
+      console.log(`🚀 Fetching prices for rank ${result.rank}...`);
+      const controller = new AbortController();
+      activePriceRequests.current.set(result.rank, controller);
+
+      try {
+        const prices = await getFlightPrices(result.itinerary, {
+          signal: controller.signal
+        });
+        console.log(`✅ Got ${prices.length} prices for rank ${result.rank}`);
+        return { rank: result.rank, prices };
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          console.error(`❌ Failed to fetch prices for rank ${result.rank}:`, error);
+          return { rank: result.rank, prices: [], error: error instanceof Error ? error.message : 'Failed to fetch prices' };
+        }
+        return { rank: result.rank, prices: [] };
+      }
+    });
+
+    try {
+      const priceResults = await Promise.all(pricePromises);
+      const newPricesMap = new Map<number, FlightPrice[]>();
+      
+      priceResults.forEach(({ rank, prices }) => {
+        newPricesMap.set(rank, prices);
+        console.log(`💰 Rank ${rank}: ${prices.length} prices stored`);
+      });
+
+      console.log('✅ All prices fetched! Map size:', newPricesMap.size);
+      setFlightPrices(newPricesMap);
+    } catch (error) {
+      console.error('❌ Price fetching error:', error);
+      setPriceError('Failed to fetch some flight prices');
+    } finally {
+      setIsFetchingPrices(false);
+      console.log('🏁 Price fetching complete');
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('📊 useEffect triggered. optimizationResults.length:', optimizationResults.length);
+    if (optimizationResults.length > 0) {
+      console.log('🎯 Calling fetchPricesForResults...');
+      void fetchPricesForResults(optimizationResults);
+    }
+  }, [optimizationResults, fetchPricesForResults]);
 
   const runOptimisation = useCallback(async (nextScenario: AttendeeScenario) => {
     setScenario(nextScenario);
@@ -395,13 +611,17 @@ export default function App() {
     setOptimiserError(null);
     setOptimizationResults([]);
     setSelectedResultIndex(0);
-    setExecutiveBrief('');
-    setBriefModel(null);
-    setBriefError(null);
-    setHasRequestedBrief(false);
-    setIsFetchingBrief(false);
-    activeBriefRequest.current?.abort();
-    activeBriefRequest.current = null;
+    setFlightPrices(new Map());
+    setExecutiveBriefs(new Map());
+    setBriefModels(new Map());
+    setBriefErrors(new Map());
+    setFetchingBriefRanks(new Set());
+    setPriceError(null);
+    setIsFetchingPrices(false);
+    activeBriefRequests.current.forEach((controller) => controller.abort());
+    activeBriefRequests.current.clear();
+    activePriceRequests.current.forEach((controller) => controller.abort());
+    activePriceRequests.current.clear();
 
     try {
       const results = await mockOptimiseScenario(nextScenario);
@@ -433,16 +653,21 @@ export default function App() {
   };
 
   const handleResetToOnboarding = () => {
-    activeBriefRequest.current?.abort();
+    activeBriefRequests.current.forEach((controller) => controller.abort());
+    activePriceRequests.current.forEach((controller) => controller.abort());
+    activePriceRequests.current.clear();
+    activeBriefRequests.current.clear();
     setScenarioInput(JSON.stringify(scenario ?? sampleScenario, null, 2));
     setScenario(null);
     setOptimizationResults([]);
     setSelectedResultIndex(0);
-    setExecutiveBrief('');
-    setBriefModel(null);
-    setBriefError(null);
-    setHasRequestedBrief(false);
-    setIsFetchingBrief(false);
+    setFlightPrices(new Map());
+    setExecutiveBriefs(new Map());
+    setBriefModels(new Map());
+    setBriefErrors(new Map());
+    setFetchingBriefRanks(new Set());
+    setPriceError(null);
+    setIsFetchingPrices(false);
     setView('onboarding');
   };
 
@@ -489,11 +714,17 @@ export default function App() {
     [eventSummary]
   );
 
+  // Get brief data for the currently selected result
+  const currentBrief = selectedResult ? executiveBriefs.get(selectedResult.rank) : undefined;
+  const currentBriefModel = selectedResult ? briefModels.get(selectedResult.rank) : undefined;
+  const currentBriefError = selectedResult ? briefErrors.get(selectedResult.rank) : undefined;
+  const isCurrentBriefFetching = selectedResult ? fetchingBriefRanks.has(selectedResult.rank) : false;
+
   const analysisBriefFallback =
-    executiveBrief ||
-    (briefError
+    currentBrief ||
+    (currentBriefError
       ? '_Unable to produce a briefing. Please try again shortly._'
-      : isFetchingBrief
+      : isCurrentBriefFetching
         ? '_Compiling insights…_'
         : '_No briefing generated._');
 
@@ -552,28 +783,49 @@ export default function App() {
             <div className="analysis-rank-selector">
               <label>Select solution:</label>
               <div className="analysis-rank-buttons">
-                {optimizationResults.map((result, index) => (
-                  <button
-                    key={result.rank}
-                    className={`rank-button ${index === selectedResultIndex ? 'rank-button--active' : ''}`}
-                    type="button"
-                    onClick={() => {
-                      setSelectedResultIndex(index);
-                      setHasRequestedBrief(false);
-                      setExecutiveBrief('');
-                    }}
-                  >
-                    Rank {result.rank}
-                    <span className="rank-button__score">Score: {result.phase_1_score.toFixed(2)}</span>
-                  </button>
-                ))}
+                {optimizationResults.map((result, index) => {
+                  const prices = flightPrices.get(result.rank) ?? [];
+                  const totalPrice = calculateTotalPrice(prices);
+                  const hasPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+                  
+                  return (
+                    <button
+                      key={result.rank}
+                      className={`rank-button ${index === selectedResultIndex ? 'rank-button--active' : ''}`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedResultIndex(index);
+                      }}
+                    >
+                      Rank {result.rank}
+                      <span className="rank-button__score">Score: {result.phase_1_score.toFixed(2)}</span>
+                      {hasPrices && (
+                        <span className="rank-button__price">Total: {formatPrice(totalPrice)}</span>
+                      )}
+                      {isFetchingPrices && !hasPrices && (
+                        <span className="rank-button__loading">Finding prices…</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          )}
+          {isFetchingPrices && (
+            <div className="price-loading-indicator">
+              <div className="price-loading-indicator__spinner" aria-hidden="true" />
+              <p>Finding flight prices…</p>
+            </div>
+          )}
+          {priceError && (
+            <div className="price-error-message">
+              <p>{priceError}</p>
             </div>
           )}
           <header className="analysis-hero">
             <div className="analysis-hero__info">
               <span className="analysis-hero__tag">Optimised outcome #{selectedResult.rank}</span>
-              <h1>{selectedResult.event_location}</h1>
+              <h1>{getCityNameFromAirportCode(selectedResult.event_location)}</h1>
               <p className="analysis-hero__headline">{formatDateRange(selectedResult.event_dates)}</p>
               <p className="analysis-hero__detail">
                 Availability window: {formatDateRange(selectedResult.event_span)}
@@ -592,6 +844,37 @@ export default function App() {
                 <span>Avg CO₂ per person</span>
                 <strong>{formatCo2(selectedResult.average_co2_per_person_tonnes)}</strong>
               </div>
+              {(() => {
+                const prices = flightPrices.get(selectedResult.rank) ?? [];
+                const totalPrice = calculateTotalPrice(prices);
+                const hasPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+                const flightsWithPrices = prices.filter(p => p.priceUSD !== undefined).length;
+                
+                // ALWAYS show price stat if we have prices OR are fetching
+                if (hasPrices || isFetchingPrices || selectedResult.itinerary.length > 0) {
+                  return (
+                    <div className="analysis-stat analysis-stat--price analysis-stat--highlight">
+                      <div className="analysis-stat__content">
+                        <span>Total flight cost</span>
+                        {hasPrices ? (
+                          <>
+                            <strong className="price-display">{formatPrice(totalPrice)}</strong>
+                            <span className="analysis-stat__subtext">
+                              {flightsWithPrices} of {prices.length} flights priced
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <strong className="price-display" style={{ opacity: 0.5 }}>—</strong>
+                            <span className="analysis-stat__subtext">Finding prices…</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               {travelStats.map((stat) => (
                 <div key={stat.label} className="analysis-stat">
                   <span>{stat.label}</span>
@@ -605,15 +888,15 @@ export default function App() {
             <section className="analysis-brief-card">
               <header className="analysis-brief-card__header">
                 <span className="analysis-brief-card__tag">Executive briefing</span>
-                {briefModel ? (
-                  <span className="analysis-brief-card__model">{briefModel}</span>
+                {currentBriefModel ? (
+                  <span className="analysis-brief-card__model">{currentBriefModel}</span>
                 ) : null}
               </header>
               <div className="analysis-brief-card__body">
                 <ReactMarkdown>{analysisBriefFallback}</ReactMarkdown>
               </div>
-              {briefError ? (
-                <p className="analysis-brief-card__error">{briefError}</p>
+              {currentBriefError ? (
+                <p className="analysis-brief-card__error">{currentBriefError}</p>
               ) : null}
             </section>
 
@@ -652,6 +935,136 @@ export default function App() {
                   </li>
                 </ul>
               </div>
+              {(() => {
+                const prices = flightPrices.get(selectedResult.rank) ?? [];
+                const hasPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+                
+                // Create a combined list: merge itinerary with price data
+                const allFlights = selectedResult.itinerary.map((itineraryEntry) => {
+                  const [origin, destination, carrier, flightNumber, departureTime, passengers, direction, stopType] = itineraryEntry;
+                  const priceEntry = prices.find(
+                    p => p.origin === origin && 
+                         p.destination === destination && 
+                         p.carrier === carrier && 
+                         p.flightNumber === flightNumber &&
+                         p.direction === direction
+                  );
+                  
+                  return {
+                    origin,
+                    destination,
+                    carrier,
+                    flightNumber,
+                    departureTime,
+                    passengers,
+                    direction,
+                    stopType,
+                    priceUSD: priceEntry?.priceUSD,
+                    error: priceEntry?.error
+                  };
+                });
+                
+                const totalPrice = allFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0);
+                const outboundFlights = allFlights.filter(f => f.direction === 'out');
+                const returnFlights = allFlights.filter(f => f.direction === 'in');
+                
+                // ALWAYS show the price card if we have itinerary OR are fetching
+                if (selectedResult.itinerary.length > 0 || isFetchingPrices || prices.length > 0) {
+                  return (
+                    <div className="analysis-side-card analysis-side-card--price">
+                      <div className="price-card-header">
+                        <h3>
+                          <span className="price-card-icon">✈️</span>
+                          Flight costs
+                        </h3>
+                        {hasPrices && (
+                          <div className="price-badge">
+                            {allFlights.filter(p => p.priceUSD !== undefined).length}/{allFlights.length}
+                          </div>
+                        )}
+                      </div>
+                      {isFetchingPrices && !hasPrices ? (
+                        <div className="price-loading-mini">
+                          <div className="price-loading-mini__spinner" aria-hidden="true" />
+                          <p>Finding prices…</p>
+                        </div>
+                      ) : hasPrices ? (
+                        <>
+                          <div className="price-summary price-summary--enhanced">
+                            <div className="price-summary__label">Total cost</div>
+                            <div className="price-summary__value">{formatPrice(totalPrice)}</div>
+                            <div className="price-summary__breakdown">
+                              {outboundFlights.filter(f => f.priceUSD !== undefined).length > 0 && (
+                                <span className="price-breakdown-item">
+                                  Outbound: {formatPrice(outboundFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0))}
+                                </span>
+                              )}
+                              {returnFlights.filter(f => f.priceUSD !== undefined).length > 0 && (
+                                <span className="price-breakdown-item">
+                                  Return: {formatPrice(returnFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0))}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {allFlights.length > 0 && (
+                            <div className="price-list-container">
+                              <ul className="price-list price-list--enhanced">
+                                {allFlights.slice(0, 10).map((flight, index) => {
+                                  const flightTotal = flight.priceUSD ? flight.priceUSD * flight.passengers : 0;
+                                  return (
+                                    <li key={index} className="price-list__item price-list__item--enhanced">
+                                      <div className="price-list__route-info">
+                                        <span className="price-list__route">
+                                          <span className="route-arrow">{flight.origin}</span>
+                                          <span className="route-connector">→</span>
+                                          <span className="route-arrow">{flight.destination}</span>
+                                        </span>
+                                        <span className="price-list__meta">
+                                          {flight.carrier} {flight.flightNumber} • {flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'} • {flight.direction === 'out' ? 'Outbound' : 'Return'}
+                                        </span>
+                                      </div>
+                                      <div className="price-list__price-container">
+                                        {flight.priceUSD !== undefined ? (
+                                          <>
+                                            <span className="price-list__price-per-person">
+                                              {formatPrice(flight.priceUSD)} × {flight.passengers}
+                                            </span>
+                                            <strong className="price-list__price price-list__price--enhanced">
+                                              {formatPrice(flightTotal)}
+                                            </strong>
+                                          </>
+                                        ) : (
+                                          <span className="price-list__error">{flight.error || 'Price unavailable'}</span>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                              {allFlights.length > 10 && (
+                                <div className="price-list-footer">
+                                  <span className="price-list-footer__text">
+                                    +{allFlights.length - 10} more flights
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      ) : allFlights.length > 0 ? (
+                        <div className="price-loading-mini">
+                          <p>Waiting for prices to load…</p>
+                        </div>
+                      ) : (
+                        <div className="price-loading-mini">
+                          <p>No flight data available yet</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </aside>
           </main>
 
@@ -678,7 +1091,7 @@ export default function App() {
             </button>
             <div className="world-header__titles">
               <span className="world-header__tag">Journey simulation</span>
-              <h1>{selectedResult.event_location}</h1>
+              <h1>{getCityNameFromAirportCode(selectedResult.event_location)}</h1>
               <p>{formatDateRange(selectedResult.event_dates)}</p>
             </div>
           </header>
@@ -700,6 +1113,29 @@ export default function App() {
               <span>Avg CO₂ per person</span>
               <strong>{formatCo2(selectedResult.average_co2_per_person_tonnes)}</strong>
             </article>
+            {(() => {
+              const prices = flightPrices.get(selectedResult.rank) ?? [];
+              const totalPrice = calculateTotalPrice(prices);
+              const hasPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+              
+              // ALWAYS show price metric if we have prices OR are fetching
+              if (hasPrices || isFetchingPrices || selectedResult.itinerary.length > 0) {
+                return (
+                  <article className="world-metric world-metric--price world-metric--highlight">
+                    <div className="world-metric__icon">💰</div>
+                    <div className="world-metric__content">
+                      <span>Total flight cost</span>
+                      {hasPrices ? (
+                        <strong className="world-price-display">{formatPrice(totalPrice)}</strong>
+                      ) : (
+                        <strong className="world-price-display" style={{ opacity: 0.5 }}>—</strong>
+                      )}
+                    </div>
+                  </article>
+                );
+              }
+              return null;
+            })()}
             {travelStats.map((stat) => (
               <article key={stat.label} className="world-metric">
                 <span>{stat.label}</span>
@@ -728,6 +1164,206 @@ export default function App() {
               ))}
             </div>
           </section>
+
+          {(() => {
+            const prices = flightPrices.get(selectedResult.rank) ?? [];
+            const hasPrices = prices.length > 0 && prices.some(p => p.priceUSD !== undefined);
+            
+            // Create a combined list: use prices if available, otherwise use itinerary
+            // Merge itinerary entries with price data
+            const allFlights: Array<{
+              origin: string;
+              destination: string;
+              carrier: string;
+              flightNumber: number;
+              departureTime: string;
+              passengers: number;
+              direction: 'out' | 'in';
+              stopType: 'Direct' | '1-Stop';
+              priceUSD?: number;
+              error?: string;
+            }> = selectedResult.itinerary.map((itineraryEntry) => {
+              const [origin, destination, carrier, flightNumber, departureTime, passengers, direction, stopType] = itineraryEntry;
+              // Find matching price if available
+              const priceEntry = prices.find(
+                p => p.origin === origin && 
+                     p.destination === destination && 
+                     p.carrier === carrier && 
+                     p.flightNumber === flightNumber &&
+                     p.direction === direction
+              );
+              
+              return {
+                origin,
+                destination,
+                carrier,
+                flightNumber,
+                departureTime,
+                passengers,
+                direction,
+                stopType,
+                priceUSD: priceEntry?.priceUSD,
+                error: priceEntry?.error
+              };
+            });
+            
+            // ALWAYS show flight details if we have itinerary OR prices
+            if (hasPrices || selectedResult.itinerary.length > 0 || isFetchingPrices) {
+              const outboundFlights = allFlights.filter(f => f.direction === 'out');
+              const returnFlights = allFlights.filter(f => f.direction === 'in');
+              const outboundTotal = outboundFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0);
+              const returnTotal = returnFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0);
+              
+              return (
+                <section className="world-flight-details">
+                  <header className="section-header section-header--enhanced">
+                    <div>
+                      <h4>
+                        <span className="section-header__icon">✈️</span>
+                        Flight details & pricing
+                      </h4>
+                      <p className="section-header__subtitle">
+                        {allFlights.length} flights • {allFlights.filter(p => p.priceUSD !== undefined).length} priced
+                      </p>
+                    </div>
+                    {hasPrices && (
+                      <div className="section-header__total">
+                        <span className="section-header__total-label">Total</span>
+                        <strong className="section-header__total-value">{formatPrice(calculateTotalPrice(prices))}</strong>
+                      </div>
+                    )}
+                  </header>
+                  <div className="flight-details__content">
+                    {outboundFlights.length > 0 && (
+                      <div className="flight-group flight-group--outbound">
+                        <div className="flight-group__header">
+                          <h5>
+                            <span className="flight-group__icon">🛫</span>
+                            Outbound flights
+                          </h5>
+                          {outboundTotal > 0 && (
+                            <span className="flight-group__total">{formatPrice(outboundTotal)}</span>
+                          )}
+                        </div>
+                        <div className="flight-table">
+                          {outboundFlights.map((flight, index) => {
+                            const date = new Date(flight.departureTime);
+                            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                            const flightTotal = flight.priceUSD ? flight.priceUSD * flight.passengers : 0;
+                            
+                            return (
+                              <div key={index} className="flight-row flight-row--enhanced">
+                                <div className="flight-row__route">
+                                  <div className="flight-row__airports-wrapper">
+                                    <span className="flight-row__airports">{flight.origin}</span>
+                                    <div className="flight-row__connector">
+                                      <div className="flight-row__connector-line"></div>
+                                      <span className="flight-row__connector-arrow">→</span>
+                                    </div>
+                                    <span className="flight-row__airports">{flight.destination}</span>
+                                  </div>
+                                  <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
+                                </div>
+                                <div className="flight-row__details">
+                                  <div className="flight-row__date-wrapper">
+                                    <span className="flight-row__date">{dateStr}</span>
+                                    <span className="flight-row__time">{timeStr}</span>
+                                  </div>
+                                  <span className="flight-row__stops">{flight.stopType}</span>
+                                </div>
+                                <div className="flight-row__pricing">
+                                  <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
+                                  {flight.priceUSD !== undefined ? (
+                                    <div className="flight-row__price-breakdown">
+                                      <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
+                                      <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                    </div>
+                                  ) : (
+                                    <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {returnFlights.length > 0 && (
+                      <div className="flight-group flight-group--return">
+                        <div className="flight-group__header">
+                          <h5>
+                            <span className="flight-group__icon">🛬</span>
+                            Return flights
+                          </h5>
+                          {returnTotal > 0 && (
+                            <span className="flight-group__total">{formatPrice(returnTotal)}</span>
+                          )}
+                        </div>
+                        <div className="flight-table">
+                          {returnFlights.map((flight, index) => {
+                            const date = new Date(flight.departureTime);
+                            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                            const flightTotal = flight.priceUSD ? flight.priceUSD * flight.passengers : 0;
+                            
+                            return (
+                              <div key={index} className="flight-row flight-row--enhanced">
+                                <div className="flight-row__route">
+                                  <div className="flight-row__airports-wrapper">
+                                    <span className="flight-row__airports">{flight.origin}</span>
+                                    <div className="flight-row__connector">
+                                      <div className="flight-row__connector-line"></div>
+                                      <span className="flight-row__connector-arrow">→</span>
+                                    </div>
+                                    <span className="flight-row__airports">{flight.destination}</span>
+                                  </div>
+                                  <span className="flight-row__carrier">{flight.carrier} {flight.flightNumber}</span>
+                                </div>
+                                <div className="flight-row__details">
+                                  <div className="flight-row__date-wrapper">
+                                    <span className="flight-row__date">{dateStr}</span>
+                                    <span className="flight-row__time">{timeStr}</span>
+                                  </div>
+                                  <span className="flight-row__stops">{flight.stopType}</span>
+                                </div>
+                                <div className="flight-row__pricing">
+                                  <span className="flight-row__passengers">{flight.passengers} {flight.passengers === 1 ? 'passenger' : 'passengers'}</span>
+                                  {flight.priceUSD !== undefined ? (
+                                    <div className="flight-row__price-breakdown">
+                                      <span className="flight-row__price-per-person">{formatPrice(flight.priceUSD)} × {flight.passengers}</span>
+                                      <strong className="flight-row__price">{formatPrice(flightTotal)}</strong>
+                                    </div>
+                                  ) : (
+                                    <span className="flight-row__error">{flight.error || 'Price unavailable'}</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {hasPrices && (
+                      <div className="flight-total flight-total--enhanced">
+                        <div className="flight-total__content">
+                          <span className="flight-total__label">Total flight cost</span>
+                          <div className="flight-total__breakdown">
+                            {outboundTotal > 0 && <span>Outbound: {formatPrice(outboundTotal)}</span>}
+                            {returnTotal > 0 && <span>Return: {formatPrice(returnTotal)}</span>}
+                          </div>
+                        </div>
+                        <strong className="flight-total__value">
+                          {formatPrice(allFlights.reduce((sum, f) => sum + (f.priceUSD ? f.priceUSD * f.passengers : 0), 0))}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            }
+            return null;
+          })()}
         </div>
       ) : null}
     </div>

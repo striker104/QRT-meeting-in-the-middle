@@ -1036,34 +1036,443 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 12px 20px;
+  gap: 6px;
+  padding: 16px 24px;
   border: 1.5px solid #101010;
-  border-radius: 12px;
+  border-radius: 24px;
   background: #ffffff;
   transition: all 0.2s ease;
   cursor: pointer;
+  box-shadow: -10px 10px 0 rgba(16, 16, 16, 0.05);
+  font-weight: 600;
+}
+
+.rank-button > span:first-child {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 .rank-button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(16, 16, 16, 0.1);
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.08);
 }
 
 .rank-button--active {
   background: #101010;
   color: #ffffff;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.1);
+}
+
+.rank-button--active:hover {
+  transform: translateY(-2px);
 }
 
 .rank-button__score {
-  font-size: 0.75rem;
-  opacity: 0.7;
+  font-size: 0.8rem;
+  opacity: 0.75;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  font-weight: 600;
 }
 
 .rank-button--active .rank-button__score {
   opacity: 0.9;
+}
+
+.rank-button__price {
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+.rank-button--active .rank-button__price {
+  opacity: 1;
+}
+
+.rank-button__loading {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.price-loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border: 1.5px dashed #101010;
+  border-radius: 24px;
+  background: #ffffff;
+  margin-bottom: 24px;
+  box-shadow: -10px 10px 0 rgba(16, 16, 16, 0.05);
+}
+
+.price-loading-indicator__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(16, 16, 16, 0.2);
+  border-top-color: #101010;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.price-loading-indicator p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.price-error-message {
+  padding: 16px 20px;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  background: #ffffff;
+  margin-bottom: 24px;
+  box-shadow: -10px 10px 0 rgba(16, 16, 16, 0.05);
+}
+
+.price-error-message p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #101010;
+}
+
+.price-loading-mini {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  justify-content: center;
+}
+
+.price-loading-mini__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(16, 16, 16, 0.2);
+  border-top-color: #101010;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.price-loading-mini p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.price-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px dotted rgba(16, 16, 16, 0.3);
+  margin-bottom: 12px;
+}
+
+.price-summary span {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  color: rgba(16, 16, 16, 0.65);
+}
+
+.price-summary strong {
+  font-size: 1.4rem;
+  color: #101010;
+}
+
+.price-summary--enhanced {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  margin-bottom: 20px;
+  box-shadow: -10px 10px 0 rgba(16, 16, 16, 0.05);
+}
+
+.price-summary__label {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  color: rgba(16, 16, 16, 0.65);
+}
+
+.price-summary__value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #101010;
+  line-height: 1;
+}
+
+.price-summary__breakdown {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.price-breakdown-item {
+  font-size: 0.75rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.price-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding-top: 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.price-list--enhanced {
+  gap: 12px;
+}
+
+.price-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
+  margin-top: 20px;
+}
+
+.price-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.price-list-container::-webkit-scrollbar-track {
+  background: rgba(16, 16, 16, 0.05);
+  border-radius: 3px;
+}
+
+.price-list-container::-webkit-scrollbar-thumb {
+  background: rgba(16, 16, 16, 0.2);
+  border-radius: 3px;s
+}
+
+.price-list-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 16, 16, 0.3);
+}
+
+.price-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.price-list__item--enhanced {
+  padding: 16px;
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.price-list__item--enhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: -8px 8px 0 rgba(16, 16, 16, 0.05);
+}
+
+.price-list__route-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.price-list__route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #101010;
+}
+
+.route-arrow {
+  padding: 4px 10px;
+  background: #101010;
+  color: #ffffff;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.route-connector {
+  color: #101010;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.price-list__meta {
+  font-size: 0.75rem;
+  color: #4a4a4a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.price-list__price-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.price-list__price-per-person {
+  font-size: 0.75rem;
+  color: #4a4a4a;
+}
+
+.price-list__price {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #101010;
+}
+
+.price-list__price--enhanced {
+  font-size: 1rem;
+  color: #101010;
+  font-weight: 600;
+}
+
+.price-list__error {
+  font-size: 0.75rem;
+  color: rgba(16, 16, 16, 0.65);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.price-list__more {
+  padding: 8px 0;
+  font-size: 0.8rem;
+  color: #4a4a4a;
+  font-style: italic;
+  text-align: center;
+}
+
+.price-list-footer {
+  padding: 12px;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.price-list-footer__text {
+  font-size: 0.85rem;
+  color: #4a4a4a;
+  font-weight: 500;
+  padding: 8px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.analysis-stat--highlight {
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+}
+
+.analysis-stat--price {
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.analysis-stat__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.analysis-stat__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.analysis-stat--highlight strong {
+  font-size: 1.4rem;
+}
+
+.price-display {
+  font-size: 1.4rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2;
+}
+
+.analysis-stat__subtext {
+  font-size: 0.7rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.analysis-side-card--price {
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.04);
+}
+
+.price-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dotted rgba(16, 16, 16, 0.3);
+}
+
+.price-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.price-card-icon {
+  font-size: 1rem;
+}
+
+.price-badge {
+  padding: 6px 12px;
+  background: #101010;
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .analysis-actions {
@@ -1181,6 +1590,364 @@ button {
 
 .world-metric strong {
   font-size: 1.3rem;
+}
+
+.world-metric--highlight strong {
+  color: #0066cc;
+  font-size: 1.5rem;
+}
+
+.world-metric--price {
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.05);
+}
+
+.world-metric__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.world-metric__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.world-price-display {
+  font-size: 1.3rem !important;
+  font-weight: 600 !important;
+  line-height: 1.2;
+}
+
+.world-flight-details {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section-header--enhanced {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.05);
+}
+
+.section-header__icon {
+  font-size: 1rem;
+  margin-right: 8px;
+}
+
+.section-header__subtitle {
+  margin: 8px 0 0 0;
+  font-size: 0.75rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.section-header__total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 12px 20px;
+  background: #101010;
+  color: #ffffff;
+  border-radius: 20px;
+}
+
+.section-header__total-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  opacity: 0.9;
+}
+
+.section-header__total-value {
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.flight-details__content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.flight-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flight-group--outbound {
+}
+
+.flight-group--return {
+}
+
+.flight-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  border-radius: 22px;
+  box-shadow: -8px 8px 0 rgba(16, 16, 16, 0.05);
+}
+
+.flight-group__header h5 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #101010;
+  font-weight: 600;
+}
+
+.flight-group__icon {
+  font-size: 1rem;
+}
+
+.flight-group__total {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #101010;
+}
+
+.flight-table {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.flight-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 2fr;
+  gap: 20px;
+  padding: 20px;
+  border: 1.5px solid #101010;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: -4px 4px 0 rgba(16, 16, 16, 0.04);
+  align-items: center;
+}
+
+.flight-row--enhanced {
+  background: #ffffff;
+  border: 1.5px solid #101010;
+  box-shadow: -4px 4px 0 rgba(16, 16, 16, 0.04);
+  transition: all 0.2s ease;
+}
+
+.flight-row--enhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: -6px 6px 0 rgba(16, 16, 16, 0.06);
+}
+
+.flight-row__route {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flight-row__airports-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.flight-row__airports {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #0066cc;
+  padding: 6px 12px;
+  background: #f0f8ff;
+  border-radius: 8px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.flight-row__connector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.flight-row__connector-line {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, #0066cc 0%, rgba(0, 102, 204, 0.3) 100%);
+}
+
+.flight-row__connector-arrow {
+  color: #0066cc;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.flight-row__carrier {
+  font-size: 0.85rem;
+  color: #4a4a4a;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.flight-row__details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flight-row__date-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flight-row__date {
+  font-size: 0.95rem;
+  color: #101010;
+  font-weight: 600;
+}
+
+.flight-row__time {
+  font-size: 0.85rem;
+  color: #4a4a4a;
+}
+
+.flight-row__stops {
+  font-size: 0.8rem;
+  color: #4a4a4a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  background: #fafafa;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.flight-row__pricing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.flight-row__passengers {
+  font-size: 0.8rem;
+  color: #4a4a4a;
+}
+
+.flight-row__price-breakdown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.flight-row__price-per-person {
+  font-size: 0.75rem;
+  color: #4a4a4a;
+}
+
+.flight-row__price {
+  font-size: 1.3rem;
+  color: #101010;
+  font-weight: 600;
+}
+
+.flight-row__error {
+  font-size: 0.75rem;
+  color: rgba(16, 16, 16, 0.65);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.flight-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px;
+  border: 1.5px solid #101010;
+  border-radius: 24px;
+  background: #ffffff;
+  margin-top: 8px;
+  box-shadow: -10px 10px 0 rgba(16, 16, 16, 0.05);
+}
+
+.flight-total--enhanced {
+  background: #101010;
+  color: #ffffff;
+  border: 1.5px solid #101010;
+  padding: 24px;
+  box-shadow: -12px 12px 0 rgba(16, 16, 16, 0.1);
+}
+
+.flight-total__content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flight-total__label {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  color: rgba(16, 16, 16, 0.65);
+}
+
+.flight-total--enhanced .flight-total__label {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.7rem;
+}
+
+.flight-total__breakdown {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.flight-total__breakdown span {
+  font-size: 0.75rem;
+  color: rgba(16, 16, 16, 0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.flight-total--enhanced .flight-total__breakdown span {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.flight-total strong {
+  font-size: 1.4rem;
+  color: #101010;
+  font-weight: 600;
+}
+
+.flight-total--enhanced .flight-total__value {
+  font-size: 1.4rem;
+  color: #ffffff;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .world-city-grid {

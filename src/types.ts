@@ -70,3 +70,18 @@ export interface OptimizationResult {
   attendee_travel_hours: Record<string, number>;
   itinerary: FlightItineraryEntry[];
 }
+
+// Flight price data
+export interface FlightPrice {
+  origin: string;
+  destination: string;
+  carrier: string;
+  flightNumber: number;
+  departureTime: string;
+  passengers: number;
+  direction: 'out' | 'in';
+  stopType: 'Direct' | '1-Stop';
+  priceUSD?: number;
+  priceCurrency?: string;
+  error?: string;
+}

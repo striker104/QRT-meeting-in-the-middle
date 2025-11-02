@@ -132,7 +132,22 @@ export async function getFlightPrices(
     return [];
   }
 
+  // Log the raw flight data being sent
+  console.log('🟢 RAW FLIGHT DATA RECEIVED:', JSON.stringify(flights, null, 2));
+  
   const messages = buildPriceRequestMessages(flights);
+  
+  // Log the messages being sent to Perplexity
+  console.log('🟢 MESSAGES SENT TO PERPLEXITY:', JSON.stringify(messages, null, 2));
+  
+  const requestBody = {
+    model: PERPLEXITY_MODEL,
+    messages,
+    temperature: 0.1
+  };
+  
+  // Log the full request body
+  console.log('🟢 REQUEST BODY TO OPENROUTER:', JSON.stringify(requestBody, null, 2));
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
@@ -142,12 +157,7 @@ export async function getFlightPrices(
       'HTTP-Referer': resolveReferer(),
       'X-Title': 'QRT Flight Price Lookup'
     },
-    body: JSON.stringify({
-      model: PERPLEXITY_MODEL,
-      messages,
-      temperature: 0.1 // Lower temperature for more consistent price data
-      // Note: Not using response_format as Perplexity may wrap arrays in objects
-    }),
+    body: JSON.stringify(requestBody),
     signal: options.signal
   });
 
@@ -157,11 +167,18 @@ export async function getFlightPrices(
   }
 
   const data = (await response.json()) as OpenRouterResponse;
+  
+  // Log the exact raw response from Perplexity/OpenRouter
+  console.log('🔵 RAW PERPLEXITY RESPONSE:', JSON.stringify(data, null, 2));
+  
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
     throw new Error('OpenRouter response did not contain a completion message.');
   }
+  
+  // Log the exact content string from Perplexity
+  console.log('🔵 PERPLEXITY CONTENT STRING:', content);
 
   // Parse the response - Perplexity may return JSON wrapped in markdown or plain JSON
   let parsedContent: any;
@@ -187,8 +204,11 @@ export async function getFlightPrices(
     }
     
     parsedContent = JSON.parse(cleanedContent);
+    
+    // Log the parsed content
+    console.log('🔵 PARSED CONTENT:', JSON.stringify(parsedContent, null, 2));
   } catch (error) {
-    console.error('Failed to parse price response:', content);
+    console.error('❌ Failed to parse price response. Raw content:', content);
     throw new Error(`Failed to parse flight price response as JSON: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
@@ -215,6 +235,9 @@ export async function getFlightPrices(
       }
     }
   }
+  
+  // Log the final price array extracted from Perplexity response
+  console.log('🔵 EXTRACTED PRICE ARRAY:', JSON.stringify(priceArray, null, 2));
 
   // Map the response to FlightPrice format
   return flights.map((flight, index) => {
