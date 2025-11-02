@@ -124,8 +124,9 @@ def create_compatibility_map(schedules_df):
         sys.exit(1)
 
 # --- 6. Core Scoring Engines ---
-def find_flights(home_code, meeting_city_code, window_start, window_end):
-    """Finds all direct AND 1-stop flights for a single leg (e.g., BOM -> SIN)"""
+def find_flights(home_code, meeting_city_code, window_start, window_end, include_connecting: bool = True):
+    """Finds all direct AND (if specified) 1-stop flights for a single leg (e.g., BOM -> SIN)"""
+    
     # --- 1. Get Direct Flights (D0) ---
     direct_flights_lazy = schedules_lazy_df.filter(
         (pl.col("DEPCITY") == home_code) &
@@ -134,8 +135,10 @@ def find_flights(home_code, meeting_city_code, window_start, window_end):
         (pl.col("DEPART_TIME_UTC") >= window_start) &
         (pl.col("ARRIVE_TIME_UTC") <= window_end)
     )
+    
     join_keys_left = ["DEPAPT", "ARRAPT", "AIRCRAFT_TYPE_CLEAN"]
     join_keys_right = ["DEPARTURE_AIRPORT", "ARRIVAL_AIRPORT", "AIRCRAFT_TYPE"]
+    
     direct_flights_with_co2 = direct_flights_lazy.join(
         emissions_lazy_df,
         left_on=join_keys_left,
@@ -155,9 +158,14 @@ def find_flights(home_code, meeting_city_code, window_start, window_end):
     ).filter(pl.col("LEG_CO2").is_not_null()
     ).filter(pl.col("LEG_TRAVEL_HOURS").is_not_null())
 
+    # --- [NEW] Check if we should stop here ---
+    if not include_connecting:
+        return direct_flights_with_co2 # Return *only* direct flights
+
     # --- 2. Get 1-Stop Flights (D1) ---
     min_layover = timedelta(hours=1, minutes=30)
     max_layover = timedelta(hours=8)
+    
     leg1_lazy = schedules_lazy_df.filter(
         (pl.col("DEPCITY") == home_code) &
         (pl.col("STOPS") == 0) &
@@ -168,6 +176,7 @@ def find_flights(home_code, meeting_city_code, window_start, window_end):
         right_on=join_keys_right,
         how="inner"
     )
+    
     leg2_lazy = schedules_lazy_df.filter(
         (pl.col("ARRCITY") == meeting_city_code) &
         (pl.col("STOPS") == 0) &
@@ -178,19 +187,23 @@ def find_flights(home_code, meeting_city_code, window_start, window_end):
         right_on=join_keys_right,
         how="inner"
     )
+    
     connections_lazy = leg1_lazy.join(
         leg2_lazy,
         left_on="ARRAPT",
         right_on="DEPAPT",
         suffix="_leg2"
     )
+    
     connections_with_layover = connections_lazy.with_columns(
         (pl.col("DEPART_TIME_UTC_leg2") - pl.col("ARRIVE_TIME_UTC")).dt.total_hours().alias("layover")
     )
+    
     valid_connections = connections_with_layover.filter(
         (pl.col("layover") > min_layover.total_seconds() / 3600) &
         (pl.col("layover") < max_layover.total_seconds() / 3600)
     )
+    
     one_stop_flights = valid_connections.select(
         (pl.col("CO2_PER_PERSON_TONNES") + pl.col("CO2_PER_PERSON_TONNES_leg2")).alias("LEG_CO2"),
         (pl.col("TRAVEL_HOURS") + pl.col("TRAVEL_HOURS_leg2") + pl.col("layover")).alias("LEG_TRAVEL_HOURS"),
@@ -209,9 +222,11 @@ def find_flights(home_code, meeting_city_code, window_start, window_end):
     all_flights = pl.concat([direct_flights_with_co2, one_stop_flights])
     return all_flights
 
-def get_all_valid_round_trips(home_code, meeting_city_code, window_start, window_end, event_duration_hours):
+def get_all_valid_round_trips(home_code, meeting_city_code, window_start, window_end, event_duration_hours, include_connecting: bool = True):
     """ Finds ALL valid round trips (direct and 1-stop) for an attendee. *** THIS FUNCTION IS NOW CACHED *** """
-    cache_key = (home_code, meeting_city_code, window_start.isoformat(), window_end.isoformat(), event_duration_hours)
+    
+    # --- [NEW] Add include_connecting to the cache key ---
+    cache_key = (home_code, meeting_city_code, window_start.isoformat(), window_end.isoformat(), event_duration_hours, include_connecting)
     if cache_key in ROUND_TRIP_CACHE:
         return ROUND_TRIP_CACHE[cache_key]
 
@@ -237,8 +252,13 @@ def get_all_valid_round_trips(home_code, meeting_city_code, window_start, window
         ROUND_TRIP_CACHE[cache_key] = result_df
         return result_df
 
-    flights_to_lazy = find_flights(home_code, meeting_city_code, window_start, window_end).lazy()
-    flights_from_lazy = find_flights(meeting_city_code, home_code, window_start, window_end).lazy()
+    # --- [NEW] Pass the include_connecting flag down ---
+    flights_to_lazy = find_flights(
+        home_code, meeting_city_code, window_start, window_end, include_connecting=include_connecting
+    ).lazy()
+    flights_from_lazy = find_flights(
+        meeting_city_code, home_code, window_start, window_end, include_connecting=include_connecting
+    ).lazy()
 
     all_round_trips_lazy = flights_to_lazy.join(
         flights_from_lazy,
@@ -271,7 +291,7 @@ def get_all_valid_round_trips(home_code, meeting_city_code, window_start, window
     return final_trips_df
 
 # --- 7. Final JSON Builder Function ---
-def get_final_json_for_city(city_code, rank, phase_1_score, scenario_dict, optimize_span=False):
+def get_final_json_for_city(city_code, rank, phase_1_score, scenario_dict, optimize_span=False, consider_connecting_flights: bool = True):
     """ This function builds the complete, detailed JSON object for one city. """
     print(f"\n--- Building JSON for Rank {rank}: {city_code} ---")
     attendees = scenario_dict["attendees"]
@@ -285,9 +305,13 @@ def get_final_json_for_city(city_code, rank, phase_1_score, scenario_dict, optim
         if not home_code:
             continue
         limit = 5 if optimize_span else 1
+        
+        # --- [NEW] Pass the connecting flights flag ---
         all_trips_df = get_all_valid_round_trips(
-            home_code, city_code, window_start, window_end, event_duration_hours
+            home_code, city_code, window_start, window_end, event_duration_hours,
+            include_connecting=consider_connecting_flights
         )
+        
         top_n_trips = all_trips_df.sort("TOTAL_CO2").limit(limit).to_dicts()
         if not top_n_trips:
             print(f" ERROR: Could not find any flights from {home_code} to {city_code}.")
@@ -415,7 +439,7 @@ def get_final_json_for_city(city_code, rank, phase_1_score, scenario_dict, optim
     return output_object
 
 # --- 9. Main Function ---
-def find_best_meeting(input_json_path, weight_co2, weight_avg_vs_std):
+def find_best_meeting(input_json_path, weight_co2, weight_avg_vs_std, consider_connecting_flights: bool = True):
     """ This is the main function for our API. It takes a json file path and a CO2 weight (0.0 to 1.0) and returns the Top 3 recommendations. """
     # We must declare these as global so that all the helper
     # functions (find_flights, etc.) can see them.
@@ -434,6 +458,9 @@ def find_best_meeting(input_json_path, weight_co2, weight_avg_vs_std):
     weight_std = 1.0 - weight_avg_vs_std
     print(f"\n--- RUNNING ANALYSIS ---")
     print(f"Weights: CO2={weight_co2}, Fairness={weight_fairness}")
+    # --- [NEW] Print the connecting flight status ---
+    print(f"Considering Connecting Flights: {consider_connecting_flights}")
+
 
     # B) Load our input JSON
     try:
@@ -511,9 +538,13 @@ def find_best_meeting(input_json_path, weight_co2, weight_avg_vs_std):
         attendee_avg_scores = []
         for home_city_name, count in attendees.items():
             home_code = CITY_TO_CODE_MAP.get(home_city_name)
+            
+            # --- [NEW] Pass the connecting flights flag ---
             all_trips_df = get_all_valid_round_trips(
-                home_code, city_code, window_start, window_end, event_duration_hours
+                home_code, city_code, window_start, window_end, event_duration_hours,
+                include_connecting=consider_connecting_flights
             )
+            
             if all_trips_df.is_empty():
                 print(f" SKIPPED (Post-filter): {city_code} (No valid round-trip found from {home_code} in time window)")
                 possible = False
@@ -562,12 +593,15 @@ def find_best_meeting(input_json_path, weight_co2, weight_avg_vs_std):
         phase_1_score = city_data['score']
         # Only run span optimization for the #1 winner
         is_winner = (i == 1)
+        
+        # --- [NEW] Pass the connecting flights flag ---
         city_json = get_final_json_for_city(
             city_code,
             rank=i,
             phase_1_score=phase_1_score,
             scenario_dict=scenario_dict,
-            optimize_span=is_winner
+            optimize_span=is_winner,
+            consider_connecting_flights=consider_connecting_flights
         )
         if city_json:
             final_output_list.append(city_json)
@@ -584,8 +618,21 @@ if __name__ == "__main__":
 
     # --- Example: Run with a 50/50 weight ---
     user_co2_weight = 0.5
-    user_avg_vs_std_weight = 1
+    user_avg_vs_std_weight = 0.5
+    
+    # --- [NEW] This is the toggle you asked for! ---
+    # Set to True to include 1-stop flights (original logic)
+    # Set to False to run the "simple" version (direct flights only)
+    USER_CONSIDER_CONNECTING_FLIGHTS = False
+
     print(f"Running main script with CO2 weight: {user_co2_weight}")
-    final_results = find_best_meeting(input_file, user_co2_weight, user_avg_vs_std_weight)
+    
+    final_results = find_best_meeting(
+        input_file, 
+        user_co2_weight, 
+        user_avg_vs_std_weight,
+        consider_connecting_flights=USER_CONSIDER_CONNECTING_FLIGHTS # <-- Pass the new switch
+    )
+    
     print("\n--- FINAL HACKATHON OUTPUT ---")
     print(json.dumps(final_results, indent=4))
