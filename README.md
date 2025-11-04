@@ -26,6 +26,7 @@ here is the link to the repo with some of the data: https://github.com/orrygoob/
 - they communicate through a flask server
 - flight and accomodation costs with **perplexity/sonar-pro** through **openrouter**
 - optmisation analysis with **MINI-MAX/M2** through **openrouter**
+- **last-mile transit** using UberAPI.
 
 ## Getting Started
 
