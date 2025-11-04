@@ -1,8 +1,31 @@
 # QRT Meeting In The Middle
+<img width="637" height="720" alt="Screenshot 2025-11-04 at 16 35 30" src="https://github.com/user-attachments/assets/50e04b26-8800-43ed-8dfd-26bd0526f898" />
+<img width="607" height="588" alt="Screenshot 2025-11-04 at 16 27 52" src="https://github.com/user-attachments/assets/e186de97-fd81-4b3c-8d81-8ca0228d972a" />
+ 
 
-Animated Mapbox GL prototype that visualises how attendees from global offices converge on a proposed meet-up hub. The dataset is intentionally static right now—the goal is to provide a visual wrapper that your teammates can plug real scheduling logic into later.
 
+https://github.com/user-attachments/assets/86571e16-db81-438a-aa44-4279472fbee3
+
+
+https://github.com/user-attachments/assets/2ea76375-a7b4-4ae0-83f1-b53574ef41df
+
+
+<img width="1440" height="782" alt="Screenshot 2025-11-04 at 16 48 41" src="https://github.com/user-attachments/assets/1b2fd0aa-b163-4992-b133-0e15a01870dd" />
+
+
+
+Animated Mapbox GL prototype that visualises how attendees from global offices converge on a proposed meet-up hub.
 here is the link to the repo with some of the data: https://github.com/orrygoob/durhack2025-flight-data.git
+
+## What this is:
+- project made for durhack 2025 for QRT's Meeting in the Middle change
+- uses a mathematical model visible in /brain to find the most optiomal route
+- optimises based on **travel time fairness** and **CO2 emmisssions**
+- backend built in python
+- frontend built using vite
+- they communicate through a flask server
+- flight and accomodation costs with **perplexity/sonar-pro** through **openrouter**
+- optmisation analysis with **MINI-MAX/M2** through **openrouter**
 
 ## Getting Started
 
