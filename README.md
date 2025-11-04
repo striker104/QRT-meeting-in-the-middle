@@ -18,7 +18,7 @@ Animated Mapbox GL prototype that visualises how attendees from global offices c
 here is the link to the repo with some of the data: https://github.com/orrygoob/durhack2025-flight-data.git
 
 ## What this is:
-- project made for durhack 2025 for QRT's Meeting in the Middle change
+- project made during durhack 2025 for QRT's Meeting in the Middle change
 - uses a mathematical model visible in /brain to find the most optiomal route
 - optimises based on **travel time fairness** and **CO2 emmisssions**
 - backend built in python
