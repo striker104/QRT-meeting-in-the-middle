@@ -61,7 +61,25 @@ ___
 Animated Mapbox GL prototype that visualises how attendees from global offices converge on a proposed meet-up hub.
 here is the link to the repo with some of the data: https://github.com/orrygoob/durhack2025-flight-data.git
 
+---
 
+## Tech Stack
+
+| Category | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Backend** | **Python** | The core language for all optimization logic. |
+| | **Polars** | High-performance data processing (`import polars as pl`) for the massive OAG flight schedule datasets. |
+| | **Flask** | A lightweight web server (`from flask import Flask`) to create the API that connects the frontend to the Python logic. |
+| | **Flask-CORS** | Used (`from flask_cors import CORS`) to allow the frontend web app to make requests to the backend API. |
+| **Frontend** | **React** | The JavaScript library used to build the interactive user interface (inferred from `.tsx` files like `App.tsx`). |
+| | **TypeScript** | The language for the entire frontend (inferred from all `.ts`/`.tsx` files), providing type safety. |
+| | **(Vite)** | *(Inferred from your previous README)* The build tool used to serve and bundle the React + TypeScript frontend. |
+| | **Mapbox GL** | Used to render the interactive globe and flight-path visualizations (inferred from `TravelMap.tsx`). |
+| **Data & APIs** | **OpenRouter** | API client (`openRouterClient.ts`) to connect to AI models for generating justifications and analysis. |
+| | **Uber API** | API client (`getUberPrices.ts`) to fetch "last-mile" transit costs and times. |
+| | **OAG Data** | The core flight schedule and CO2 data (`challenge_data/schedules`) that the algorithm runs on. |
+
+---
 ## Getting Started
 
 ### Frontend Setup
