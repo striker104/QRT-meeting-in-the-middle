@@ -1,3 +1,5 @@
+Optimisation Algorithm and MapBoxGL visualiser to compute the fairest and most ecological meeting point.
+
 # QRT Meeting In The Middle
 <img width="637" height="720" alt="Screenshot 2025-11-04 at 16 35 30" src="https://github.com/user-attachments/assets/50e04b26-8800-43ed-8dfd-26bd0526f898" />
 <img width="607" height="588" alt="Screenshot 2025-11-04 at 16 27 52" src="https://github.com/user-attachments/assets/e186de97-fd81-4b3c-8d81-8ca0228d972a" />
