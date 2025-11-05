@@ -1,16 +1,58 @@
-Optimisation Algorithm and MapBoxGL visualiser to compute the fairest and most ecological meeting point.
+# QRT Meeting In The Middle Hackathon Project
 
-# QRT Meeting In The Middle
-<img width="637" height="720" alt="Screenshot 2025-11-04 at 16 35 30" src="https://github.com/user-attachments/assets/50e04b26-8800-43ed-8dfd-26bd0526f898" />
-<img width="607" height="588" alt="Screenshot 2025-11-04 at 16 27 52" src="https://github.com/user-attachments/assets/e186de97-fd81-4b3c-8d81-8ca0228d972a" />
- 
+### This is a full-stack decision-support tool built for the DurHack 2025 "Meeting in the Middle" challenge.
 
+Our tool ingests any meeting scenario and finds the optimal host city by running a powerful optimization algorithm. The core of our solution is a **"cost function"** that finds the best trade-off between **Carbon Emissions (CO2)** and **Travel Fairness**.
+
+Unlike a simple calculator, our tool provides deep, interactive insights via a dashboard. The user can use **sliders** to instantly adjust the "weight" given to:
+* **🌍 CO2 Impact:** Prioritizes the lowest total carbon footprint.
+* **🏃 Individual Fairness:** Minimizes the *maximum* travel time (no one has a terrible journey).
+* **🤝 Group Fairness:** Minimizes the *standard deviation* of all travel times, ensuring the team is treated as a cohesive group.
+
+---
+
+### Key Features
+
+* **🧠 AI-Powered Recommendations**
+    We don't just give one answer. The tool calculates and presents the **Top 3 optimal locations**. For each, we use an AI (via OpenRouter) to automatically generate a **clear, data-driven rationale** explaining *why* it's a good choice based on your chosen slider weights.
+
+* **💸 "Beyond Flights" Total Cost Analysis**
+    We augment the OAG data by fetching real-time costs for **accommodation** (with a star-rating filter) and **"last-mile" Uber transit** (calculating airport-to-hotel time and cost), providing a true "door-to-door" analysis.
+
+* **📊 Rich Metrics Dashboard**
+    For each potential location, we provide all the metrics the judges ask for: Total CO2, Avg/Median/Max/Min Travel Hours, Total Event Cost (Flights + Hotels + Uber), and **Event Span** (minimizing the time from the first arrival to the last departure).
+
+* **🗺️ Animated Visualizer**
+    A polished Mapbox GL frontend provides an intuitive, animated "flow map" showing how all attendees converge on the proposed meeting hub.
+
+
+
+___
+***Input Form + Slider Showcase***
+
+<table>
+  <tr>
+    <td><img height="850" alt="Screenshot 2025-11-04 at 16 35 30" src="https://github.com/user-attachments/assets/50e04b26-8800-43ed-8dfd-26bd0526f898" /></td>
+    <td><img height="850" alt="Screenshot 2025-11-04 at 16 27 52" src="https://github.com/user-attachments/assets/7236433b-c114-4f22-8439-5e181af1b7f7" /></td>
+  </tr>
+
+</table>
+
+---
+
+***Location Selection, Metrics,Flight cost, Hotel rating select, Generative justification Showcase***
 
 https://github.com/user-attachments/assets/86571e16-db81-438a-aa44-4279472fbee3
 
+___
+
+***Animated Map box that shows path to chosen location***
 
 https://github.com/user-attachments/assets/2ea76375-a7b4-4ae0-83f1-b53574ef41df
 
+___
+
+***Flight Cost***
 
 <img width="1440" height="782" alt="Screenshot 2025-11-04 at 16 48 41" src="https://github.com/user-attachments/assets/1b2fd0aa-b163-4992-b133-0e15a01870dd" />
 
@@ -19,16 +61,6 @@ https://github.com/user-attachments/assets/2ea76375-a7b4-4ae0-83f1-b53574ef41df
 Animated Mapbox GL prototype that visualises how attendees from global offices converge on a proposed meet-up hub.
 here is the link to the repo with some of the data: https://github.com/orrygoob/durhack2025-flight-data.git
 
-## What this is:
-- project made during durhack 2025 for QRT's Meeting in the Middle change
-- uses a mathematical model visible in /brain to find the most optiomal route
-- optimises based on **travel time fairness** and **CO2 emmisssions**
-- backend built in python
-- frontend built using vite
-- they communicate through a flask server
-- flight and accomodation costs with **perplexity/sonar-pro** through **openrouter**
-- optmisation analysis with **MINI-MAX/M2** through **openrouter**
-- **last-mile transit** using UberAPI.
 
 ## Getting Started
 
