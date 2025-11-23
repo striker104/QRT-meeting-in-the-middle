@@ -4,7 +4,7 @@
 
 Our tool ingests any meeting scenario and finds the optimal host city by running a powerful optimization algorithm. The core of our solution is a **"cost function"** that finds the best trade-off between **Carbon Emissions (CO2)** and **Travel Fairness**.
 
-Unlike a simple calculator, our tool provides deep, interactive insights via a dashboard. The user can use **sliders** to instantly adjust the "weight" given to:
+Unlike a simple calculator, our tool provides deep insights via an interactive dashboard. The user can use **sliders** to instantly adjust the "weight" given to:
 * **🌍 CO2 Impact:** Prioritizes the lowest total carbon footprint.
 * **🏃 Individual Fairness:** Minimizes the *maximum* travel time (no one has a terrible journey).
 * **🤝 Group Fairness:** Minimizes the *standard deviation* of all travel times, ensuring the team is treated as a cohesive group.
